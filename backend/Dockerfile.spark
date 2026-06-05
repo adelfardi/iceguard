@@ -1,9 +1,22 @@
+# syntax=docker/dockerfile:1
+#
 # Backend image WITH a bundled Apache Spark so the Spark maintenance executor can run
 # real rewrite_data_files in local mode (master=local[*]) or submit to a cluster.
 #
-# The Quarkus app runs on Java 21 (image default). Spark 3.5 is only supported on
-# Java 8/11/17, so we install Java 17 and point Spark at it via spark-env.sh — the
-# Quarkus JVM and Spark each use their own Java.
+# The Quarkus app runs on Java 21. Spark 3.5 is only supported on Java 8/11/17, so we
+# install Java 17 and point Spark at it via spark-env.sh — the Quarkus JVM and Spark
+# each use their own Java.
+
+# ── Stage 1: build the Quarkus app (no need to run `mvn package` on the host) ──
+FROM maven:3.9-eclipse-temurin-21 AS builder
+WORKDIR /build
+# Resolve dependencies first so they cache when only source changes (best-effort).
+COPY pom.xml .
+RUN mvn -B -ntp -q dependency:go-offline || true
+COPY src ./src
+RUN mvn -B -ntp -DskipTests package
+
+# ── Stage 2: runtime with bundled Spark ──
 FROM eclipse-temurin:21-jre-jammy
 
 ARG SPARK_VERSION=3.5.3
@@ -33,7 +46,7 @@ RUN printf 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64\nexport SPARK_LO
 ENV SPARK_HOME=/opt/spark
 
 WORKDIR /app
-COPY target/quarkus-app/ /app/
+COPY --from=builder /build/target/quarkus-app/ /app/
 
 EXPOSE 8080
 ENV JAVA_OPTS="-Xms128m -Xmx512m"
