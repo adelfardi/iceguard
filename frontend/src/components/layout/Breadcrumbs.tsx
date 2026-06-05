@@ -88,6 +88,11 @@ function buildCrumbs(
   if (segments[0] === 'catalogs') {
     crumbs.push({ path: '/catalogs', label: STATIC_LABELS['/catalogs'] });
 
+    if (segments[1] === 'new') {
+      crumbs.push({ path: '/catalogs/new', label: 'New Catalog' });
+      return crumbs;
+    }
+
     if (segments[1]) {
       const catalogPath = `/catalogs/${segments[1]}`;
       crumbs.push({
@@ -105,7 +110,7 @@ function buildCrumbs(
         if (segments[4] === 'tables' && segments[5]) {
           crumbs.push({
             path: pathname,
-            label: segments[5],
+            label: segments[5] === 'new' ? 'New Table' : segments[5],
           });
         }
       }

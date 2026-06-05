@@ -3,7 +3,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Dashboard } from '@/pages/Dashboard';
 import { Catalogs } from '@/pages/Catalogs';
+import { CreateCatalog } from '@/pages/CreateCatalog';
 import { CatalogDetail } from '@/pages/CatalogDetail';
+import { CreateTable } from '@/pages/CreateTable';
 import { TableDetail } from '@/pages/TableDetail';
 import { Executions } from '@/pages/Executions';
 import { Pipelines } from '@/pages/Pipelines';
@@ -27,7 +29,9 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Dashboard /> },
       { path: 'catalogs', element: <Catalogs /> },
+      { path: 'catalogs/new', element: <CreateCatalog /> },
       { path: 'catalogs/:catalogId', element: <CatalogDetail /> },
+      { path: 'catalogs/:catalogId/namespaces/:namespace/tables/new', element: <CreateTable /> },
       { path: 'catalogs/:catalogId/namespaces/:namespace/tables/:table', element: <TableDetail /> },
       { path: 'executions', element: <Executions /> },
       { path: 'pipelines', element: <Pipelines /> },
