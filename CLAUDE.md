@@ -7,7 +7,8 @@
 ## Backend
 ```bash
 cd backend
-# Dev mode (H2 in-memory, no PostgreSQL needed)
+# Dev mode — needs an empty Postgres on :5433 (e.g. the docker-compose.dev.yml
+# `postgres` service). Flyway provisions the schema; Hibernate runs in `validate`.
 mvn quarkus:dev
 # Runs on http://localhost:8080
 # Swagger UI: http://localhost:8080/q/swagger-ui
