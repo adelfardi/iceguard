@@ -64,17 +64,25 @@ IceGuard then **connects to your own** Iceberg catalog(s) and object store.
 
 ## Screenshots
 
-**Multi-catalog browser** — manage REST, Nessie and Polaris catalogs side by side.
-
-![Catalogs](docs/img1.png)
-
-**Schema evolution & diff** — version-to-version column changes, with the noisy groups collapsed.
-
-![Schema evolution](docs/img2.png)
-
-**Storage & health** — file-size distribution, small-file detection and compaction hints.
-
-![Storage analysis](docs/screens/img3.png)
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/img1.png" width="100%" alt="Catalogs" /><br/>
+      <sub><b>Multi-catalog browser</b> — REST, Nessie and Polaris side by side.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/img2.png" width="100%" alt="Schema evolution" /><br/>
+      <sub><b>Schema evolution &amp; diff</b> — column changes, noisy groups collapsed.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screens/img3.png" width="100%" alt="Storage analysis" /><br/>
+      <sub><b>Storage &amp; health</b> — file-size distribution and compaction hints.</sub>
+    </td>
+    <td width="50%"></td>
+  </tr>
+</table>
 
 ## Stack
 
