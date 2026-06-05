@@ -62,6 +62,20 @@ IceGuard then **connects to your own** Iceberg catalog(s) and object store.
 - **Alerts** — threshold rules on table metrics with optional SMTP email notifications.
 - **Timeline** — snapshots + executions on one timeline, click any item for its output/logs.
 
+## Screenshots
+
+**Multi-catalog browser** — manage REST, Nessie and Polaris catalogs side by side.
+
+![Catalogs](docs/img1.png)
+
+**Schema evolution & diff** — version-to-version column changes, with the noisy groups collapsed.
+
+![Schema evolution](docs/img2.png)
+
+**Storage & health** — file-size distribution, small-file detection and compaction hints.
+
+![Storage analysis](docs/screens/img3.png)
+
 ## Stack
 
 | Layer | Tech |
