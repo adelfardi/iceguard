@@ -18,5 +18,14 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // shadcn/ui files export `*Variants` (cva) helpers alongside the component;
+      // this is an HMR-only hint, not a correctness rule. Keep it as a warning.
+      'react-refresh/only-export-components': 'warn',
+      // New, aggressive rule from eslint-plugin-react-hooks. The codebase uses a
+      // few intentional "sync state when a prop loads" effects — surface as a
+      // warning rather than failing the build. rules-of-hooks stays an error.
+      'react-hooks/set-state-in-effect': 'warn',
+    },
   },
 ])

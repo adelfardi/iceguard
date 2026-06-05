@@ -314,6 +314,12 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
   namespace: string;
   table: string;
 }) {
+  // Hooks must run unconditionally — keep this above the early return below.
+  const { data: recentExecutions } = useQuery({
+    queryKey: ['table-recent-executions', catalogId, namespace, table],
+    queryFn: () => executionApi.search({ catalogId, namespace, table, size: 6, page: 0 }),
+  });
+
   if (!stats) return <Skeleton className="h-96 w-full" />;
 
   const dataFilesPie = [
@@ -337,10 +343,6 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
     return { hour: label, commits: snapshotsByHour[label] ?? 0 };
   });
 
-  const { data: recentExecutions } = useQuery({
-    queryKey: ['table-recent-executions', catalogId, namespace, table],
-    queryFn: () => executionApi.search({ catalogId, namespace, table, size: 6, page: 0 }),
-  });
   const latestActions = recentExecutions?.items ?? [];
 
   return (
