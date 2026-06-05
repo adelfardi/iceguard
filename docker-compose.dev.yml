@@ -19,8 +19,7 @@ services:
       QUARKUS_DATASOURCE_USERNAME: iceguard
       QUARKUS_DATASOURCE_PASSWORD: iceguard
       QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/iceguard
-      QUARKUS_HIBERNATE_ORM_DATABASE_GENERATION: update
-      QUARKUS_FLYWAY_MIGRATE_AT_START: "false"
+      # Schema via Flyway + Hibernate validate (app defaults). Start on an empty DB.
       QUARKUS_OIDC_ENABLED: "false"
       QUARKUS_HTTP_CORS: "true"
       QUARKUS_HTTP_CORS_ORIGINS: http://localhost:5173,http://localhost:3000

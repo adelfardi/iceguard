@@ -44,8 +44,9 @@ services:
       # Level 1: set ICEGUARD_DB_URL to your external Postgres. Level 2/3: the
       # bundled `postgres` service is used by default.
       QUARKUS_DATASOURCE_JDBC_URL: ${ICEGUARD_DB_URL:-jdbc:postgresql://postgres:5432/iceguard}
-      QUARKUS_HIBERNATE_ORM_DATABASE_GENERATION: update
-      QUARKUS_FLYWAY_MIGRATE_AT_START: "false"
+      # Schema is provisioned by Flyway (migrate-at-start) and checked by Hibernate
+      # validate — these are the app defaults, so no override here. The target DB
+      # must be empty on first run (Flyway owns the schema).
       QUARKUS_OIDC_ENABLED: "false"
       # Only used with the sandbox profile (MinIO); harmless otherwise.
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
