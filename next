@@ -1,0 +1,97 @@
+Ajouter les fonctionnalités fonctionnelles suivantes :
+
+1. Data preview
+- Afficher un échantillon de données d’une table
+- Support LIMIT configurable
+- Filtrage simple par colonne
+- Tri simple
+- Projection de colonnes
+- Masquage des colonnes sensibles
+- Requête exécutée via moteur externe : Trino, Spark SQL ou DuckDB selon architecture
+
+2. Table activity
+- Nombre de snapshots par jour
+- Nombre de commits par jour
+- Évolution du volume de données
+- Évolution du nombre de data files
+- Évolution du nombre de delete files
+- Taille moyenne des fichiers
+- Nombre de petits fichiers
+- Nombre de partitions modifiées par jour
+- Dernier commit
+- Auteur / application si disponible dans summary
+
+3. Snapshot explorer
+- Liste des snapshots
+- Type d’opération : append, overwrite, delete, replace
+- Timestamp
+- Parent snapshot
+- Summary complet
+- Fichiers ajoutés/supprimés
+- Records ajoutés/supprimés si disponible
+- Comparaison entre deux snapshots
+
+4. Partition explorer
+- Liste des partitions
+- Nombre de fichiers par partition
+- Taille par partition
+- Nombre de records par partition
+- Partitions vides ou déséquilibrées
+- Détection des partitions trop petites/trop grosses
+
+5. File explorer
+- Data files
+- Delete files
+- Manifest files
+- Taille
+- Format
+- Partition
+- Record count
+- Lower/upper bounds si disponibles
+- Null counts / NaN counts si disponibles
+
+6. Health score
+Créer un score de santé de table basé sur :
+- trop de petits fichiers
+- trop de snapshots
+- metadata trop volumineuse
+- partitions déséquilibrées
+- présence de delete files
+- maintenance non exécutée récemment
+- taille moyenne des fichiers trop faible
+
+7. Recommendations
+Afficher des recommandations automatiques :
+- “Compaction recommandée”
+- “Expire snapshots recommandé”
+- “Rewrite manifests recommandé”
+- “Remove orphan files à vérifier”
+- “Partition strategy à revoir”
+- “Taille moyenne des fichiers trop faible”
+
+8. Maintenance simulation
+Avant d’exécuter une action :
+- afficher impact estimé
+- fichiers potentiellement concernés
+- snapshots conservés/supprimés
+- gain estimé
+- risque associé
+- bouton dry-run
+- confirmation obligatoire
+
+9. Lineage / history
+- Historique des changements de schéma
+- Historique des partitions
+- Historique des propriétés
+- Timeline des opérations
+- Comparaison avant/après
+
+10. Alerting fonctionnel
+- Définir des règles :
+  - table sans snapshot récent
+  - trop de snapshots
+  - trop de petits fichiers
+  - taille metadata excessive
+  - jobs de maintenance échoués
+- Affichage dans dashboard
+- Notification email / webhook / Slack plus tard

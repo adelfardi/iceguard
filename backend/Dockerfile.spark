@@ -1,0 +1,41 @@
+# Backend image WITH a bundled Apache Spark so the Spark maintenance executor can run
+# real rewrite_data_files in local mode (master=local[*]) or submit to a cluster.
+#
+# The Quarkus app runs on Java 21 (image default). Spark 3.5 is only supported on
+# Java 8/11/17, so we install Java 17 and point Spark at it via spark-env.sh — the
+# Quarkus JVM and Spark each use their own Java.
+FROM eclipse-temurin:21-jre-jammy
+
+ARG SPARK_VERSION=3.5.3
+ARG ICEBERG_VERSION=1.7.1
+
+# Java 17 (for Spark) + runtime tools Spark scripts need (ps, etc.)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends openjdk-17-jre-headless curl procps bash && \
+    rm -rf /var/lib/apt/lists/*
+
+# Apache Spark
+RUN curl -fSL "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.tgz" \
+        -o /tmp/spark.tgz && \
+    tar -xzf /tmp/spark.tgz -C /opt && \
+    ln -s "/opt/spark-${SPARK_VERSION}-bin-hadoop3" /opt/spark && \
+    rm /tmp/spark.tgz
+
+# Bundle the Iceberg Spark runtime + AWS (S3) bundle so no --packages download is needed at run time
+RUN curl -fSL "https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/${ICEBERG_VERSION}/iceberg-spark-runtime-3.5_2.12-${ICEBERG_VERSION}.jar" \
+        -o "/opt/spark/jars/iceberg-spark-runtime-3.5_2.12-${ICEBERG_VERSION}.jar" && \
+    curl -fSL "https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-aws-bundle/${ICEBERG_VERSION}/iceberg-aws-bundle-${ICEBERG_VERSION}.jar" \
+        -o "/opt/spark/jars/iceberg-aws-bundle-${ICEBERG_VERSION}.jar"
+
+# Spark uses Java 17 (the Quarkus app keeps using the image default Java 21 on PATH)
+RUN printf 'export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64\nexport SPARK_LOCAL_IP=127.0.0.1\n' > /opt/spark/conf/spark-env.sh
+
+ENV SPARK_HOME=/opt/spark
+
+WORKDIR /app
+COPY target/quarkus-app/ /app/
+
+EXPOSE 8080
+ENV JAVA_OPTS="-Xms128m -Xmx512m"
+
+ENTRYPOINT ["java", "-jar", "/app/quarkus-run.jar"]

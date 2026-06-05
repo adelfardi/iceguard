@@ -1,0 +1,31 @@
+# ─── Secrets / local env ───
+.env
+.env.*
+!.env.example
+*.pem
+**/credentials
+.aws/
+
+# ─── Java / Maven (backend) ───
+backend/target/
+**/*.class
+*.log
+
+# ─── Node / Vite (frontend) ───
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ─── IDE / OS ───
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ─── Build / misc ───
+*.tgz
+ice.png.bak

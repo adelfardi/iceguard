@@ -1,0 +1,10 @@
+<settings>
+  <mirrors>
+    <mirror>
+      <id>central-direct</id>
+      <name>Maven Central direct</name>
+      <url>https://repo.maven.apache.org/maven2</url>
+      <mirrorOf>*</mirrorOf>
+    </mirror>
+  </mirrors>
+</settings>
