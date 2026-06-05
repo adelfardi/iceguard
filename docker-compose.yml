@@ -1,41 +1,114 @@
-services:
+# IceGuard application stack, in three tiers via Compose profiles.
+#
+#   Level 1 — app (official):    docker compose up -d --build
+#       frontend + backend only. Point the backend at YOUR Postgres via .env
+#       (ICEGUARD_DB_URL / ICEGUARD_DB_USER / ICEGUARD_DB_PASSWORD).
+#
+#   Level 2 — + database:        docker compose --profile db up -d --build
+#       adds a Postgres container — self-contained app + its required DB.
+#
+#   Level 3 — + test sandbox:    docker compose --profile db --profile sandbox up -d --build
+#       adds MinIO (S3) + an Iceberg REST catalog so you can browse/create tables.
+#       Register it from the UI with URI http://rest-catalog:8181.
+#
+#   UI:   http://localhost:8090        API/Swagger: http://localhost:8080/q/swagger-ui
+#
+# Backend here is the SLIM image (no Spark). For the full multi-catalog sandbox
+# (Nessie, Polaris, real Spark), use docker-compose.dev.yml (see CLAUDE.md).
 
-  # ─── IceGuard Backend (Quarkus, with bundled Spark) ───
+name: iceguard
+
+services:
+  # ── Level 1: the two shippable services ──
+  frontend:
+    build:
+      context: ./frontend
+    image: iceguard-frontend
+    environment:
+      BACKEND_URL: http://backend:8080
+    ports:
+      - "8090:80"
+    depends_on:
+      - backend
+    networks: [iceguard]
+
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile.spark
-    container_name: iceguard-backend
-    ports:
-      - "8080:8080"
+      dockerfile: Dockerfile          # slim (no Spark)
+    image: iceguard-backend
     environment:
       QUARKUS_DATASOURCE_DB_KIND: postgresql
-      QUARKUS_DATASOURCE_USERNAME: iceguard
-      QUARKUS_DATASOURCE_PASSWORD: iceguard
-      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/iceguard
+      QUARKUS_DATASOURCE_USERNAME: ${ICEGUARD_DB_USER:-iceguard}
+      QUARKUS_DATASOURCE_PASSWORD: ${ICEGUARD_DB_PASSWORD:-iceguard}
+      # Level 1: set ICEGUARD_DB_URL to your external Postgres. Level 2/3: the
+      # bundled `postgres` service is used by default.
+      QUARKUS_DATASOURCE_JDBC_URL: ${ICEGUARD_DB_URL:-jdbc:postgresql://postgres:5432/iceguard}
       QUARKUS_HIBERNATE_ORM_DATABASE_GENERATION: update
       QUARKUS_FLYWAY_MIGRATE_AT_START: "false"
       QUARKUS_OIDC_ENABLED: "false"
-      QUARKUS_HTTP_CORS: "true"
-      QUARKUS_HTTP_CORS_ORIGINS: http://localhost:5173,http://localhost:3000
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
-      AWS_REGION: us-east-1
-      # Spark executor: spark-sql is bundled in the image; Iceberg jars are baked into
-      # $SPARK_HOME/jars, so disable --packages (avoids a runtime download).
-      ICEGUARD_SPARK_SQL_PATH: /opt/spark/bin/spark-sql
-      ICEGUARD_SPARK_ICEBERG_RUNTIME: ""
-      ICEGUARD_SPARK_AWS_BUNDLE: ""
+      # Only used with the sandbox profile (MinIO); harmless otherwise.
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+    ports:
+      - "8080:8080"
     depends_on:
       postgres:
-        condition: service_started
-    networks:
-      - iceguard
+        condition: service_healthy
+        required: false             # only waited on when the `db` profile is active
+    networks: [iceguard]
 
-  # ─── Catalog 1: Iceberg REST Catalog (Apache reference) ───
+  # ── Level 2: Postgres (IceGuard's required dependency) ──
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["db"]
+    environment:
+      POSTGRES_DB: iceguard
+      POSTGRES_USER: ${ICEGUARD_DB_USER:-iceguard}
+      POSTGRES_PASSWORD: ${ICEGUARD_DB_PASSWORD:-iceguard}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ICEGUARD_DB_USER:-iceguard}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [iceguard]
+
+  # ── Level 3: test sandbox — MinIO + a working Iceberg REST catalog ──
+  minio:
+    image: minio/minio:latest
+    profiles: ["sandbox"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks: [iceguard]
+
+  minio-init:
+    image: minio/mc:latest
+    profiles: ["sandbox"]
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+        sleep 3;
+        mc alias set local http://minio:9000 minioadmin minioadmin;
+        mc mb --ignore-existing local/warehouse;
+        echo 'Bucket warehouse created';
+      "
+    networks: [iceguard]
+
   rest-catalog:
     image: apache/iceberg-rest-fixture:latest
-    container_name: iceguard-rest-catalog
+    profiles: ["sandbox"]
     ports:
       - "8181:8181"
     environment:
@@ -49,139 +122,11 @@ services:
     depends_on:
       minio-init:
         condition: service_completed_successfully
-    networks:
-      - iceguard
-
-  # ─── Catalog 2: Second REST Catalog (simulates Nessie/staging env) ───
-  nessie-catalog:
-    image: apache/iceberg-rest-fixture:latest
-    container_name: iceguard-nessie-catalog
-    ports:
-      - "8183:8181"
-    environment:
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
-      AWS_REGION: us-east-1
-      CATALOG_WAREHOUSE: s3://warehouse/nessie/
-      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
-      CATALOG_S3_ENDPOINT: http://minio:9000
-      CATALOG_S3_PATH__STYLE__ACCESS: "true"
-    depends_on:
-      minio-init:
-        condition: service_completed_successfully
-    networks:
-      - iceguard
-
-  # ─── Catalog 3: Apache Polaris (catalog-as-a-service) ───
-  # ─── Polaris schema/realm bootstrap (one-shot, into Postgres) ───
-  # One-shot, run manually on a fresh DB: `docker compose --profile bootstrap run --rm polaris-bootstrap`
-  # (Re-running on an already-bootstrapped realm fails, so it is NOT a startup dependency.)
-  polaris-bootstrap:
-    image: apache/polaris-admin-tool:latest
-    container_name: iceguard-polaris-bootstrap
-    profiles: ["bootstrap"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      polaris.persistence.type: relational-jdbc
-      quarkus.datasource.db-kind: postgresql
-      quarkus.datasource.username: iceguard
-      quarkus.datasource.password: iceguard
-      quarkus.datasource.jdbc.url: jdbc:postgresql://postgres:5432/polaris
-    command:
-      - "bootstrap"
-      - "--realm=POLARIS"
-      - "--credential=POLARIS,polaris-root,polaris-secret"
-    networks:
-      - iceguard
-
-  polaris:
-    image: apache/polaris:latest
-    container_name: iceguard-polaris
-    ports:
-      - "8182:8181"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      # Real AWS S3 (bucket polaris-iceguard, us-east-1). Temporary STS creds — refresh when expired.
-      AWS_ACCESS_KEY_ID: ${POLARIS_AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${POLARIS_AWS_SECRET_ACCESS_KEY:-}
-      AWS_SESSION_TOKEN: ${POLARIS_AWS_SESSION_TOKEN:-}
-      AWS_REGION: us-east-1
-      # Persistence: Postgres (relational-jdbc) — survives restarts.
-      polaris.persistence.type: relational-jdbc
-      quarkus.datasource.db-kind: postgresql
-      quarkus.datasource.username: iceguard
-      quarkus.datasource.password: iceguard
-      quarkus.datasource.jdbc.url: jdbc:postgresql://postgres:5432/polaris
-      polaris.realm-context.realms: POLARIS
-      JAVA_OPTS_APPEND: >-
-        -Dpolaris.features.SKIP_CREDENTIAL_SUBSCOPING_INDIRECTION=true
-        -Dpolaris.catalog.io.default-options.s3.region=us-east-1
-    networks:
-      - iceguard
-
-  # ─── MinIO (S3-compatible object storage) ───
-  minio:
-    image: minio/minio:latest
-    container_name: iceguard-minio
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data --console-address ":9001"
-    volumes:
-      - minio-data:/data
-    networks:
-      - iceguard
-
-  # ─── MinIO init (create buckets) ───
-  minio-init:
-    image: minio/mc:latest
-    container_name: iceguard-minio-init
-    depends_on:
-      minio:
-        condition: service_started
-    entrypoint: >
-      /bin/sh -c "
-        sleep 3;
-        mc alias set local http://minio:9000 minioadmin minioadmin;
-        mc mb --ignore-existing local/warehouse;
-        echo 'Bucket warehouse created';
-      "
-    networks:
-      - iceguard
-
-  # ─── PostgreSQL (IceGuard metadata) ───
-  postgres:
-    image: postgres:16-alpine
-    container_name: iceguard-postgres
-    ports:
-      - "5433:5432"
-    environment:
-      POSTGRES_DB: iceguard
-      POSTGRES_USER: iceguard
-      POSTGRES_PASSWORD: iceguard
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      # Creates the dedicated `polaris` database on a fresh volume (Polaris persistence).
-      - ./scripts/init-polaris-db.sql:/docker-entrypoint-initdb.d/10-polaris-db.sql:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U iceguard"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-    networks:
-      - iceguard
+    networks: [iceguard]
 
 volumes:
-  minio-data:
   postgres-data:
+  minio-data:
 
 networks:
   iceguard:
-    driver: bridge
