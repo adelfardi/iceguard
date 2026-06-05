@@ -1,0 +1,106 @@
+name: Snapshot images
+
+# On-demand (manual) build & push of throwaway, per-commit images to GHCR,
+# tagged sha-<short> (+ a moving `edge`). Use these to pull & test a specific
+# commit before cutting an official `v*` release (see release.yml).
+#
+# Scope: frontend + backend SLIM (no Spark) for speed. Note this means
+# iceguard-backend:sha-* is the slim image, while iceguard-backend:<version>
+# from a release is the Spark image — snapshots do not cover the Spark build.
+#
+# Trigger it from the Actions tab ("Run workflow") or:
+#   gh workflow run snapshot.yml --ref <branch-or-sha>
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "Snapshot (sha-*) versions to keep per image when pruning"
+        default: "10"
+        required: false
+      prune_dry_run:
+        description: "Prune in dry-run mode (list what would be deleted, delete nothing)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAMESPACE: ${{ vars.IMAGE_NAMESPACE || format('ghcr.io/{0}', github.repository_owner) }}
+
+jobs:
+  publish-snapshot:
+    name: Snapshot ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: iceguard-backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile      # slim (no Spark)
+          - image: iceguard-frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata (sha + edge, never latest)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}
+          flavor: latest=false
+          tags: |
+            type=sha
+            type=raw,value=edge
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push snapshot
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  prune:
+    name: Prune old snapshots (${{ matrix.image }})
+    needs: publish-snapshot
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    strategy:
+      matrix:
+        image: [iceguard-backend, iceguard-frontend]
+    steps:
+      # Deletes only sha-* snapshot versions, keeping the N most recent.
+      # Release tags (v*, latest) and the moving `edge` pointer are excluded.
+      # GITHUB_TOKEN can delete versions of repo-linked packages; if you ever
+      # hit a 403, add a PAT with delete:packages as the GHCR_PAT secret.
+      - name: Prune ${{ matrix.image }}
+        uses: snok/container-retention-policy@v3.1.0
+        with:
+          account: user
+          token: ${{ secrets.GHCR_PAT || secrets.GITHUB_TOKEN }}
+          image-names: ${{ matrix.image }}
+          image-tags: "sha-* !latest !edge !v*"
+          tag-selection: tagged
+          cut-off: 1h
+          keep-n-most-recent: ${{ inputs.keep }}
+          dry-run: ${{ inputs.prune_dry_run }}
