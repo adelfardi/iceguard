@@ -67,11 +67,11 @@ IceGuard then **connects to your own** Iceberg catalog(s) and object store.
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/img1.png" width="100%" alt="Catalogs" /><br/>
+      <img src="docs/screens/img1.png" width="100%" alt="Catalogs" /><br/>
       <sub><b>Multi-catalog browser</b> — REST, Nessie and Polaris side by side.</sub>
     </td>
     <td width="50%" valign="top">
-      <img src="docs/img2.png" width="100%" alt="Schema evolution" /><br/>
+      <img src="docs/screens/img2.png" width="100%" alt="Schema evolution" /><br/>
       <sub><b>Schema evolution &amp; diff</b> — column changes, noisy groups collapsed.</sub>
     </td>
   </tr>
@@ -79,6 +79,36 @@ IceGuard then **connects to your own** Iceberg catalog(s) and object store.
     <td width="50%" valign="top">
       <img src="docs/screens/img3.png" width="100%" alt="Storage analysis" /><br/>
       <sub><b>Storage &amp; health</b> — file-size distribution and compaction hints.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screens/img4.png" width="100%" alt="Create table" /><br/>
+      <sub><b>Create-table wizard</b> — description, columns, partitions, properties.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screens/img5.png" width="100%" alt="Timeline" /><br/>
+      <sub><b>Timeline</b> — snapshots &amp; maintenance on one axis, filterable.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screens/img6.png" width="100%" alt="Snapshot detail" /><br/>
+      <sub><b>Snapshot detail</b> — the full commit summary.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screens/img7.png" width="100%" alt="Maintenance" /><br/>
+      <sub><b>Maintenance</b> — expire, compact, rewrite, rollback, remove orphans.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/screens/img8.png" width="100%" alt="Schema editor" /><br/>
+      <sub><b>Schema editor</b> — multi-column edits applied in a single commit.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/screens/img9.png" width="100%" alt="Alerts" /><br/>
+      <sub><b>Alerts</b> — filterable, paginated events with acknowledge.</sub>
     </td>
     <td width="50%"></td>
   </tr>
