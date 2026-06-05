@@ -1,0 +1,10 @@
+# Build output (rebuilt inside the image)
+target/
+**/*.class
+
+# Local/IDE
+.idea/
+*.iml
+.vscode/
+*.log
+.DS_Store
