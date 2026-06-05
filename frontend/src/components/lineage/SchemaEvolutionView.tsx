@@ -529,7 +529,7 @@ export function SchemaDiffGraphic({ diff }: { diff: SchemaDiff }) {
     ...diff.modified.map((c) => ({
       status: 'modified' as const,
       name: c.name,
-      type: c.type,
+      type: c.kind,
       detail: c.detail,
     })),
     ...diff.dropped.map((c) => ({ status: 'dropped' as const, name: c.name, type: c.type, required: c.required })),

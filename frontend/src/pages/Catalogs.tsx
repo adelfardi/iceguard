@@ -242,12 +242,16 @@ export function Catalogs() {
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>
-                    {testResults[catalog.id] && testResults[catalog.id] !== 'loading' && (
-                      <span className={cn('text-xs ml-1', testResults[catalog.id].success ? 'text-emerald-400' : 'text-red-400')}>
-                        {testResults[catalog.id].success ? <Check className="inline h-3 w-3 mr-0.5" /> : <AlertTriangle className="inline h-3 w-3 mr-0.5" />}
-                        {testResults[catalog.id].message}
-                      </span>
-                    )}
+                    {(() => {
+                      const res = testResults[catalog.id];
+                      if (!res || res === 'loading') return null;
+                      return (
+                        <span className={cn('text-xs ml-1', res.success ? 'text-emerald-400' : 'text-red-400')}>
+                          {res.success ? <Check className="inline h-3 w-3 mr-0.5" /> : <AlertTriangle className="inline h-3 w-3 mr-0.5" />}
+                          {res.message}
+                        </span>
+                      );
+                    })()}
                   </div>
                 </CardContent>
               </Card>

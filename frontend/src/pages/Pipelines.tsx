@@ -560,13 +560,13 @@ function PipelineFormDialog({
   }
 
   function setTaskEngine(task: TaskDraft, engine: 'java' | 'spark') {
-    const next = { ...task.parameters, [ENGINE_PARAM]: engine };
+    const next: Record<string, string> = { ...task.parameters, [ENGINE_PARAM]: engine };
     if (engine === 'java') delete next[SPARK_CLUSTER_PARAM];
     updateTask(task.key, { parameters: next });
   }
 
   function setTaskSparkCluster(task: TaskDraft, cluster: string) {
-    const next = { ...task.parameters, [ENGINE_PARAM]: 'spark' };
+    const next: Record<string, string> = { ...task.parameters, [ENGINE_PARAM]: 'spark' };
     if (cluster === 'local') delete next[SPARK_CLUSTER_PARAM];
     else next[SPARK_CLUSTER_PARAM] = cluster;
     updateTask(task.key, { parameters: next });

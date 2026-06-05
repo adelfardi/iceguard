@@ -27,20 +27,20 @@ import {
   Database, Columns3, Grid3x3, FileText, Camera, BarChart3, Wrench, Loader2,
   Trash2, Pencil, Plus, RefreshCw, TableIcon, Eye, HardDrive, FileStack, Clock3, MoreVertical,
   Bell, AlertTriangle, CheckCircle2, Mail, History, Activity,
-  Layers, ChevronRight, ArrowLeft, Search, FileX, Boxes, Gauge,
+  Layers, ChevronRight, ArrowLeft, Search, Gauge,
   Network, GitCompare, ArrowRight, ArrowUp, ArrowDown, Minus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
-import type { MaintenanceRequest, SnapshotInfo, AlertRuleResponse, AlertEventResponse, ExecutionInfo } from '@/types';
+import type { MaintenanceRequest, SnapshotInfo, AlertRuleResponse, ExecutionInfo } from '@/types';
 import { AlertRuleForm } from './Alerts';
 import { OperationOutputDialog } from '@/components/OperationOutputDialog';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { SchemaEvolutionCard, SchemaDiffGraphic } from '@/components/lineage/SchemaEvolutionView';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, RadialBarChart, RadialBar, Legend,
+  ResponsiveContainer,
 } from 'recharts';
 
 const ICEBERG_TYPES = [
@@ -52,7 +52,6 @@ const COLORS = {
   emerald: '#10b981', teal: '#14b8a6', amber: '#f59e0b', rose: '#f43f5e',
   cyan: '#06b6d4', sky: '#0ea5e9', lime: '#84cc16', orange: '#f97316',
 };
-const PIE_COLORS = [COLORS.blue, COLORS.emerald, COLORS.amber, COLORS.rose];
 
 export function TableDetail() {
   const { catalogId, namespace, table } = useParams<{ catalogId: string; namespace: string; table: string }>();
@@ -239,7 +238,7 @@ export function TableDetail() {
 
         {/* ── Overview ── */}
         <TabsContent value="overview" className="mt-4">
-          <OverviewTab tableDetail={tableDetail!} stats={stats!} snapshots={snapshots ?? []} catalogId={catId} namespace={namespace!} table={table!} />
+          <OverviewTab stats={stats!} snapshots={snapshots ?? []} catalogId={catId} namespace={namespace!} table={table!} />
         </TabsContent>
 
         {/* ── Schema ── */}
@@ -308,8 +307,7 @@ export function TableDetail() {
 const DATA_FILES_THRESHOLD = 100;
 const SNAPSHOT_THRESHOLD = 50;
 
-function OverviewTab({ tableDetail, stats, snapshots, catalogId, namespace, table }: {
-  tableDetail: import('@/types').TableDetail;
+function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
   stats: import('@/types').TableStatistics | undefined;
   snapshots: SnapshotInfo[];
   catalogId: number;
@@ -1181,8 +1179,6 @@ const VIS_META: Record<string, { color: string; icon: string }> = {
 };
 const VIS_DEFAULT_META = { color: '#64748b', icon: 'zap' };
 
-const ALL_EVENT_TYPES = Object.keys(VIS_META);
-
 type TimelineTipMeta = {
   kind: 'snapshot' | 'execution';
   label: string;
@@ -1274,7 +1270,11 @@ function TimelineTab({ catalogId, namespace, table, snapshots }: {
     let cancelled = false;
 
     (async () => {
-      const { Timeline, DataSet } = await import('vis-timeline/standalone');
+      // The standalone bundle re-exports DataSet at runtime, but its published
+      // `types` entry resolves to declarations/index (which only imports it), so
+      // we widen the module type with vis-data's exports to surface DataSet.
+      const { Timeline, DataSet } = (await import('vis-timeline/standalone')) as
+        typeof import('vis-timeline/standalone') & typeof import('vis-data');
       if (cancelled || !containerRef.current) return;
 
       const items = new DataSet<{
@@ -1805,7 +1805,7 @@ function StorageTab({ catalogId, namespace, table }: { catalogId: number; namesp
                   contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }}
                   labelStyle={{ color: '#e2e8f0', fontWeight: 600 }}
                   itemStyle={{ color: '#e2e8f0' }}
-                  formatter={(v: number, _n, p) => [`${v} files · ${formatBytes((p.payload as { totalBytes: number }).totalBytes)}`, 'Count']}
+                  formatter={(v, _n, p) => [`${v} files · ${formatBytes((p.payload as { totalBytes: number }).totalBytes)}`, 'Count']}
                 />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                   {histogram.map((_, i) => <Cell key={i} fill={i < 2 ? '#f43f5e' : i < 4 ? '#f59e0b' : '#06b6d4'} />)}
