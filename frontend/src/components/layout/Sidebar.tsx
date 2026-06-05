@@ -17,7 +17,6 @@ import { useState } from 'react';
 import { useCatalogStore } from '@/hooks/useCatalogStore';
 import { namespaceApi, alertApi } from '@/api/client';
 import { CatalogSwitcher } from './CatalogSwitcher';
-import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';

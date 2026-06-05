@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { alertApi, catalogApi } from '@/api/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,12 +36,6 @@ function getMetricLabel(metric: string): string {
 
 function getOperatorSymbol(op: string): string {
   return OPERATORS[op] ?? op;
-}
-
-function parseTableRef(tableRef: string): { catalogId: string; namespace: string; table: string } | null {
-  // tableRef format: "catalogName/namespace.table" — we need catalogId
-  // We can't reliably parse catalogId from name, so we return null and handle it differently
-  return null;
 }
 
 export function Alerts() {

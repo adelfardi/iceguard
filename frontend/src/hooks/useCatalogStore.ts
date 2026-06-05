@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { CatalogConfig } from '@/types';
 
 interface CatalogStore {
   activeCatalogId: number | null;

@@ -41,11 +41,6 @@ export function Dashboard() {
     { name: 'OK', value: Math.max(1, totalExecs - failedCount), color: COLORS.gray },
   ];
 
-  const successPie = [
-    { name: 'Success', value: successCount, color: COLORS.emerald },
-    { name: 'Other', value: Math.max(1, totalExecs - successCount), color: COLORS.gray },
-  ];
-
   return (
     <div className="space-y-6">
       <div>
