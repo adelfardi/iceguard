@@ -39,9 +39,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      # The lock file was generated with npm 11; npm 10 (shipped by the node
+      # images) reconciles rolldown/vite's wasm optional deps differently and
+      # fails `npm ci` ("@emnapi/* missing from lock file"). Match the Dockerfile.
+      - name: Pin npm to match the lock file
+        run: npm install -g npm@11.6.2
       - name: Install
         run: npm ci
       - name: Type-check
