@@ -71,28 +71,52 @@ IceGuard then **connects to your own** Iceberg catalog(s) and object store.
 | Required dependency | PostgreSQL (backend state) |
 | Test sandbox only | Docker Compose: MinIO (S3), Iceberg REST Catalog, Nessie, Apache Polaris, (optional) Spark |
 
-## Quick start (local test sandbox)
+## Quick start
 
-This spins up IceGuard **plus** a throwaway test stack so you can try everything immediately.
-Requirements: Docker + Docker Compose, JDK 21 & Maven, Node 18+.
+Requirements: Docker + Docker Compose. (For hot-reload development: JDK 21 & Maven, Node 20+.)
+
+The app is two services — **frontend** + **backend** — plus a required **Postgres**.
+`docker-compose.yml` bundles them in three tiers via Compose profiles:
+
+| Level | Command | Services | When |
+|------|---------|----------|------|
+| 1 — app (official) | `docker compose up -d --build` | frontend + backend | Bring your own Postgres (`ICEGUARD_DB_URL` in `.env`) |
+| 2 — + database | `docker compose --profile db up -d --build` | + Postgres | Self-contained app + its required DB |
+| 3 — + test sandbox | `docker compose --profile db --profile sandbox up -d --build` | + MinIO + REST catalog | Try everything locally |
+
+For the quickest tour, use **Level 3** and open **http://localhost:8090**, then
+**Catalogs → Add Catalog** with URI `http://rest-catalog:8181`.
+Tear down with `docker compose --profile db --profile sandbox down` (add `-v` to wipe data).
+
+| Service | URL | Notes |
+|---------|-----|-------|
+| Frontend (UI) | http://localhost:8090 | nginx; proxies `/api` to the backend |
+| Backend API | http://localhost:8080 | Swagger at `/q/swagger-ui` |
+| MinIO console | http://localhost:9001 | `minioadmin` / `minioadmin` (sandbox profile) |
+| Iceberg REST catalog | http://localhost:8181 | sandbox profile; register it as `http://rest-catalog:8181` |
+
+### Develop (hot reload)
+
+Run the dependencies in Docker and the app from source:
 
 ```bash
-# 1. Start the test sandbox (MinIO, Postgres, REST + Nessie + Polaris catalogs)
-docker compose up -d
+# deps only (Postgres :5433, REST catalog :8181, MinIO) — not the backend container
+docker compose -f docker-compose.dev.yml up -d postgres rest-catalog nessie-catalog minio minio-init
+cd backend && mvn quarkus:dev -Dquarkus.profile=docker   # :8080  (Swagger: /q/swagger-ui)
+cd frontend && npm install && npm run dev                 # :5173  (proxies /api to :8080)
+```
 
-# 2. Backend (Quarkus, dev mode) — http://localhost:8080  (Swagger: /q/swagger-ui)
-cd backend && mvn quarkus:dev -Dquarkus.profile=docker
+### Advanced: full multi-catalog sandbox
 
-# 3. Frontend (Vite) — http://localhost:5173
-cd frontend && npm install && npm run dev
+For every catalog type at once (REST **+ Nessie + Polaris**) and real Spark compaction:
 
-# 4. Seed demo catalogs/tables (after the backend is up)
-./scripts/seed-catalog.sh
+```bash
+docker compose -f docker-compose.dev.yml up -d
+./scripts/seed-catalog.sh        # after the backend is up
 ```
 
 The **REST Catalog** and **Nessie** demo catalogs work out of the box on MinIO.
-**Polaris writes require real AWS S3** credentials — copy `.env.example` to `.env` and see
-[`CLAUDE.md`](CLAUDE.md) for the Polaris + Postgres-persistence setup.
+**Polaris writes require real AWS S3** — copy `.env.example` to `.env`; see [`CLAUDE.md`](CLAUDE.md).
 
 ### Using IceGuard for real
 
@@ -122,11 +146,12 @@ catalogs.
 ## Project layout
 
 ```
-backend/    Quarkus REST API (com.iceguard.*)
-frontend/   React + TypeScript SPA
-scripts/    seed + helper scripts
-docker-compose.yml
-CLAUDE.md   detailed architecture notes & known limitations
+backend/                 Quarkus REST API (com.iceguard.*)
+frontend/                React + TypeScript SPA
+scripts/                 seed + helper scripts
+docker-compose.yml       app stack (frontend + backend; profiles: db / sandbox)
+docker-compose.dev.yml   advanced multi-catalog sandbox (Nessie, Polaris, Spark)
+CLAUDE.md                detailed architecture notes & known limitations
 ```
 
 ## Known limitations

@@ -22,8 +22,11 @@ npm run dev
 ```
 
 ## Docker Environment (Multi-Catalog)
+Two compose files: `docker-compose.yml` is the tiered **app** stack (frontend + backend,
+with `--profile db` / `--profile sandbox`; see README). `docker-compose.dev.yml` below is the
+**advanced multi-catalog dev sandbox** (Spark backend + Nessie + Polaris).
 ```bash
-docker compose up -d
+docker compose -f docker-compose.dev.yml up -d
 
 # Services:
 #   REST Catalog:      http://localhost:8181      (Apache reference)
@@ -45,11 +48,11 @@ Polaris state is persisted in the `polaris` Postgres DB (`polaris.persistence.ty
 so it survives restarts (no more re-seed). Setup:
 ```bash
 # Fresh DB only — bootstrap the realm/schema once (one-shot, profile-gated):
-docker compose --profile bootstrap run --rm polaris-bootstrap
+docker compose -f docker-compose.dev.yml --profile bootstrap run --rm polaris-bootstrap
 
 # Start Polaris with AWS creds (S3 writes need valid creds; temporary STS creds expire ~1h):
 export POLARIS_AWS_ACCESS_KEY_ID=... POLARIS_AWS_SECRET_ACCESS_KEY=... POLARIS_AWS_SESSION_TOKEN=...
-docker compose up -d polaris
+docker compose -f docker-compose.dev.yml up -d polaris
 ```
 When the AWS token expires (S3 `400 "token expired"` / `403`), refresh it in the Polaris container env
 (re-`up -d polaris`) AND in the IceGuard `polaris` catalog credentials — but the **catalog/namespaces/
@@ -76,7 +79,7 @@ tables now persist** across the restart. For no expiry, use a long-lived IAM use
 - Nessie 0.99 Catalog Server has complex S3 credential config — we use a REST Catalog bridge
 - Java API executor only *analyses* data files (no real compaction). Real `rewrite_data_files`
   runs via the Spark executor, which requires `spark-sql` on PATH (or `iceguard.spark.sql-path`).
-  In docker-compose the backend is built from `backend/Dockerfile.spark`, which bundles Spark
+  In `docker-compose.dev.yml` the backend is built from `backend/Dockerfile.spark`, which bundles Spark
   3.5.3 (on Java 17) + the Iceberg jars in `$SPARK_HOME/jars`, so local Spark works out of the box.
   The slim `backend/Dockerfile` (no Spark) remains for non-Spark deployments.
 
