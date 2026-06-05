@@ -249,7 +249,7 @@ function NamespaceNode({
                     : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                 )}
               >
-                <Table2 className="h-3.5 w-3.5 text-blue-400" />
+                <Table2 className={cn('h-3.5 w-3.5', isActive ? 'text-secondary' : 'text-blue-400')} />
                 <span className="truncate">{table}</span>
               </Link>
             );
@@ -288,13 +288,13 @@ function NavMenu({ collapsed, currentPath, onNavigate }: { collapsed: boolean; c
             className={cn(
               'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
               isActive
-                ? 'bg-sidebar-accent text-sidebar-accent-foreground border-l-2 border-l-indigo-500'
+                ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                 : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
               collapsed && 'justify-center px-2',
             )}
           >
             <span className="relative shrink-0">
-              <item.icon className="h-4 w-4" />
+              <item.icon className={cn('h-4 w-4', isActive ? 'text-secondary' : undefined)} />
               {isAlerts && unackCount > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
                   {unackCount > 9 ? '9+' : unackCount}

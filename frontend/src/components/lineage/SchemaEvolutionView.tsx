@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
+  ChevronDown,
   ChevronLeft,
+  ChevronRight,
   Columns3,
   GitBranch,
   History,
@@ -296,6 +298,18 @@ function ColumnEvolutionTable({ rows }: { rows: ColumnRow[] }) {
       .filter((g) => g.items.length > 0);
   }, [rows]);
 
+  // Noisy groups start collapsed; modified/initial stay open.
+  const [collapsed, setCollapsed] = useState<Set<ColumnStatus>>(
+    () => new Set<ColumnStatus>(['unchanged', 'added', 'dropped']),
+  );
+  const toggle = (status: ColumnStatus) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) next.delete(status);
+      else next.add(status);
+      return next;
+    });
+
   if (rows.length === 0) {
     return <p className="text-sm text-muted-foreground py-4 text-center">No columns in this schema version.</p>;
   }
@@ -305,15 +319,24 @@ function ColumnEvolutionTable({ rows }: { rows: ColumnRow[] }) {
       {grouped.map(({ status, items }) => {
         const meta = STATUS_META[status];
         const Icon = meta.icon;
+        const isCollapsed = collapsed.has(status);
         return (
           <div key={status}>
-            <div className="mb-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => toggle(status)}
+              className="mb-2 flex w-full items-center gap-2 text-left transition-colors hover:text-foreground"
+            >
+              {isCollapsed
+                ? <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
               <span className={cn('h-2 w-2 rounded-full', meta.dotClass)} />
               <Icon className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 {meta.label} ({items.length})
               </span>
-            </div>
+            </button>
+            {!isCollapsed && (
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {items.map((col) => (
                 <div
@@ -338,6 +361,7 @@ function ColumnEvolutionTable({ rows }: { rows: ColumnRow[] }) {
                 </div>
               ))}
             </div>
+            )}
           </div>
         );
       })}

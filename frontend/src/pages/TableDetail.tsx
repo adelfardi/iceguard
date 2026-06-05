@@ -28,7 +28,7 @@ import {
   Trash2, Pencil, Plus, RefreshCw, TableIcon, Eye, HardDrive, FileStack, Clock3, MoreVertical,
   Bell, AlertTriangle, CheckCircle2, Mail, History, Activity,
   Layers, ChevronRight, ArrowLeft, Search, Gauge,
-  Network, GitCompare, ArrowRight, ArrowUp, ArrowDown, Minus,
+  Network, GitCompare, ArrowRight, ArrowUp, ArrowDown, Minus, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -38,6 +38,7 @@ import { AlertRuleForm } from './Alerts';
 import { OperationOutputDialog } from '@/components/OperationOutputDialog';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { SchemaEvolutionCard, SchemaDiffGraphic } from '@/components/lineage/SchemaEvolutionView';
+import { AlertEventsList } from '@/components/alerts/AlertEventsList';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
@@ -153,8 +154,9 @@ export function TableDetail() {
         <div className="flex shrink-0 items-center sm:justify-end">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" aria-label="Table actions">
-                <MoreVertical className="h-4 w-4" />
+              <Button variant="outline" size="sm" aria-label="Table actions">
+                Actions
+                <MoreVertical className="ml-1.5 h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
@@ -307,6 +309,33 @@ export function TableDetail() {
 const DATA_FILES_THRESHOLD = 100;
 const SNAPSHOT_THRESHOLD = 50;
 
+type CommitGranularity = 'minute' | 'hour' | 'day';
+
+/** Group snapshots into chronological time buckets at the chosen granularity. */
+function bucketSnapshots(snapshots: SnapshotInfo[], g: CommitGranularity): { label: string; commits: number }[] {
+  const buckets = new Map<number, { label: string; commits: number }>();
+  for (const s of snapshots) {
+    const d = new Date(s.timestamp);
+    let bucket: Date;
+    let label: string;
+    if (g === 'day') {
+      bucket = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      label = bucket.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    } else if (g === 'hour') {
+      bucket = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours());
+      label = bucket.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit' });
+    } else {
+      bucket = new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes());
+      label = bucket.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+    const key = bucket.getTime();
+    const entry = buckets.get(key) ?? { label, commits: 0 };
+    entry.commits++;
+    buckets.set(key, entry);
+  }
+  return [...buckets.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v);
+}
+
 function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
   stats: import('@/types').TableStatistics | undefined;
   snapshots: SnapshotInfo[];
@@ -319,6 +348,7 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
     queryKey: ['table-recent-executions', catalogId, namespace, table],
     queryFn: () => executionApi.search({ catalogId, namespace, table, size: 6, page: 0 }),
   });
+  const [commitGranularity, setCommitGranularity] = useState<CommitGranularity>('hour');
 
   if (!stats) return <Skeleton className="h-96 w-full" />;
 
@@ -332,16 +362,7 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
     { name: 'Remaining', value: Math.max(0, SNAPSHOT_THRESHOLD - stats.snapshotCount), color: '#e5e7eb' },
   ];
 
-  const snapshotsByHour = snapshots.reduce((acc, s) => {
-    const hour = new Date(s.timestamp).getHours();
-    const label = `${hour.toString().padStart(2, '0')}:00`;
-    acc[label] = (acc[label] ?? 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-  const hourlyData = Array.from({ length: 24 }, (_, h) => {
-    const label = `${h.toString().padStart(2, '0')}:00`;
-    return { hour: label, commits: snapshotsByHour[label] ?? 0 };
-  });
+  const commitData = bucketSnapshots(snapshots, commitGranularity);
 
   const latestActions = recentExecutions?.items ?? [];
 
@@ -349,20 +370,34 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
     <div className="space-y-6">
       {/* Charts */}
       <div className="grid gap-4 md:grid-cols-2">
-        {/* Commits by hour */}
+        {/* Commits over time */}
         <Card>
-          <CardHeader className="pb-0"><CardTitle className="flex items-center gap-2 text-sm"><BarChart3 className="h-4 w-4 text-amber-500" /> Commits by Hour</CardTitle></CardHeader>
+          <CardHeader className="pb-0 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="flex items-center gap-2 text-sm"><BarChart3 className="h-4 w-4 text-amber-500" /> Commits by {commitGranularity}</CardTitle>
+            <div className="flex items-center gap-0.5 rounded-md bg-muted/50 p-0.5">
+              {(['minute', 'hour', 'day'] as const).map((g) => (
+                <button
+                  key={g}
+                  onClick={() => setCommitGranularity(g)}
+                  className={cn(
+                    'rounded px-2 py-0.5 text-[11px] capitalize transition-colors',
+                    commitGranularity === g ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          </CardHeader>
           <CardContent>
             {snapshots.length === 0 ? <p className="text-center text-muted-foreground py-8 text-sm">No snapshots yet</p> : (
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={hourlyData}>
+                <BarChart data={commitData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="hour" tick={{ fontSize: 9 }} className="fill-muted-foreground" interval={2} />
+                  <XAxis dataKey="label" tick={{ fontSize: 9 }} className="fill-muted-foreground" interval="preserveStartEnd" />
                   <YAxis tick={{ fontSize: 11 }} className="fill-muted-foreground" allowDecimals={false} />
                   <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12 }} />
-                  <Bar dataKey="commits" radius={[4, 4, 0, 0]}>
-                    {hourlyData.map((entry, i) => <Cell key={i} fill={entry.commits > 0 ? COLORS.amber : '#e5e7eb'} />)}
-                  </Bar>
+                  <Bar dataKey="commits" radius={[4, 4, 0, 0]} fill={COLORS.amber} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -919,6 +954,8 @@ function AlertsTab({ catalogId, namespace, table }: { catalogId: number; namespa
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [editRule, setEditRule] = useState<AlertRuleResponse | null>(null);
+  const [subTab, setSubTab] = useState('rules');
+  const [focusRuleId, setFocusRuleId] = useState<number | null>(null);
 
   const { data: allRules, isLoading: rulesLoading } = useQuery({
     queryKey: ['alert-rules-table', catalogId, namespace, table],
@@ -933,7 +970,7 @@ function AlertsTab({ catalogId, namespace, table }: { catalogId: number; namespa
     queryFn: () => alertApi.listEvents(100),
     select: (events) => events.filter(
       (e) => e.tableRef.includes(namespace) && e.tableRef.includes(table),
-    ).slice(0, 10),
+    ),
   });
 
   const toggleMutation = useMutation({
@@ -963,185 +1000,232 @@ function AlertsTab({ catalogId, namespace, table }: { catalogId: number; namespa
     onError: (err: Error) => toast.error(`Failed: ${apiErrorMessage(err)}`),
   });
 
-  return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      {/* Alert Rules — left column */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Bell className="h-5 w-5 text-amber-500" /> Rules
-              {allRules && <Badge variant="secondary">{allRules.length}</Badge>}
-            </span>
-            <Dialog open={addOpen} onOpenChange={setAddOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" variant="outline">
-                  <Plus className="mr-1 h-4 w-4" /> Add
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-lg">
-                <DialogHeader><DialogTitle>Create Alert Rule</DialogTitle></DialogHeader>
-                <AlertRuleForm
-                  catalogId={catalogId}
-                  namespace={namespace}
-                  tableName={table}
-                  onSuccess={() => setAddOpen(false)}
-                />
-              </DialogContent>
-            </Dialog>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {rulesLoading ? (
-            <div className="space-y-3">
-              {[1, 2].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
-            </div>
-          ) : !allRules || allRules.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Bell className="mx-auto h-8 w-8 mb-2" />
-              <p>No alert rules</p>
-              <p className="text-sm">Click &quot;Add&quot; to create one.</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {allRules.map((rule) => (
-                <Card key={rule.id} className={`${!rule.enabled ? 'opacity-60' : ''}`}>
-                  <CardContent className="py-3">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{rule.name}</span>
-                          <StatusBadge status={rule.lastStatus} kind="alert" />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="font-mono text-xs">
-                            {METRICS_DISPLAY[rule.metric]?.label ?? rule.metric} {OPERATORS_DISPLAY[rule.operator] ?? rule.operator} {rule.threshold}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">every {rule.checkIntervalMinutes}m</span>
-                        </div>
-                        {rule.lastValue !== null && (
-                          <p className="text-xs text-muted-foreground">
-                            Last value: {rule.lastValue}
-                            {rule.lastCheckedAt && ` (${new Date(rule.lastCheckedAt).toLocaleString()})`}
-                          </p>
-                        )}
-                        {rule.emails.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {rule.emails.map((email) => (
-                              <Badge key={email} variant="secondary" className="text-xs">
-                                <Mail className="mr-1 h-3 w-3" />{email}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Switch
-                          checked={rule.enabled}
-                          onCheckedChange={(checked) =>
-                            toggleMutation.mutate({ id: rule.id, enabled: checked === true })
-                          }
-                          size="sm"
-                        />
-                        <Dialog open={editRule?.id === rule.id} onOpenChange={(open) => { if (open) setEditRule(rule); else setEditRule(null); }}>
-                          <DialogTrigger asChild>
-                            <Button variant="ghost" size="sm"><Pencil className="h-3.5 w-3.5" /></Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-lg">
-                            <DialogHeader><DialogTitle>Edit Alert Rule</DialogTitle></DialogHeader>
-                            <AlertRuleForm
-                              catalogId={catalogId}
-                              namespace={namespace}
-                              tableName={table}
-                              existingRule={rule}
-                              onSuccess={() => setEditRule(null)}
-                            />
-                          </DialogContent>
-                        </Dialog>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="sm"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Alert Rule</AlertDialogTitle>
-                              <AlertDialogDescription>Delete rule &quot;{rule.name}&quot;? This cannot be undone.</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction variant="destructive" onClick={() => deleteMutation.mutate(rule.id)}>
-                                {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Delete
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+  const triggeredCount = allEvents?.filter((e) => e.status === 'TRIGGERED').length ?? 0;
 
-      {/* Recent Alert Events */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-red-500" /> Recent Events
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {eventsLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+  const unackedByRule = (ruleId: number) =>
+    allEvents?.filter((e) => e.ruleId === ruleId && e.status === 'TRIGGERED').length ?? 0;
+
+  return (
+    <Tabs value={subTab} onValueChange={setSubTab}>
+      <TabsList className="bg-muted/50">
+        <TabsTrigger value="rules" className="gap-1.5">
+          <Bell className="h-4 w-4 text-amber-500" />
+          Rules
+          {allRules && <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{allRules.length}</Badge>}
+        </TabsTrigger>
+        <TabsTrigger value="alerts" className="gap-1.5">
+          <AlertTriangle className="h-4 w-4 text-red-500" />
+          Alerts
+          {triggeredCount > 0 && (
+            <Badge className="ml-1 h-5 px-1.5 text-xs bg-red-500/15 text-red-400 border-0">
+              {triggeredCount}
+            </Badge>
+          )}
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="rules" className="mt-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex justify-end mb-4">
+              <Dialog open={addOpen} onOpenChange={setAddOpen}>
+                <DialogTrigger asChild>
+                  <Button size="sm" variant="outline">
+                    <Plus className="mr-1 h-4 w-4" /> Add
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-lg">
+                  <DialogHeader><DialogTitle>Create Alert Rule</DialogTitle></DialogHeader>
+                  <AlertRuleForm
+                    catalogId={catalogId}
+                    namespace={namespace}
+                    tableName={table}
+                    onSuccess={() => setAddOpen(false)}
+                  />
+                </DialogContent>
+              </Dialog>
             </div>
-          ) : !allEvents || allEvents.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500 mb-2" />
-              <p>No recent alert events</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {allEvents.map((event) => (
-                <div key={event.id} className="flex items-center gap-3 rounded-md p-3">
-                  <div className="shrink-0">
-                    {event.status === 'TRIGGERED' ? (
-                      <AlertTriangle className="h-4 w-4 text-red-500" />
-                    ) : event.status === 'RESOLVED' ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                    ) : (
-                      <Bell className="h-4 w-4 text-blue-500" />
+            {rulesLoading ? (
+              <div className="space-y-3">
+                {[1, 2].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
+              </div>
+            ) : !allRules || allRules.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Bell className="mx-auto h-8 w-8 mb-2" />
+                <p>No alert rules</p>
+                <p className="text-sm">Click &quot;Add&quot; to create one.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {allRules.map((rule) => (
+                  <Card key={rule.id} className={`${!rule.enabled ? 'opacity-60' : ''}`}>
+                    <CardContent className="py-3">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">{rule.name}</span>
+                            <StatusBadge status={rule.lastStatus} kind="alert" />
+                            {unackedByRule(rule.id) > 0 && (
+                              <button
+                                onClick={() => { setFocusRuleId(rule.id); setSubTab('alerts'); }}
+                                title="View unacknowledged alerts"
+                                className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-1.5 py-0.5 text-[11px] font-medium text-red-400 transition-colors hover:bg-red-500/25"
+                              >
+                                <AlertTriangle className="h-3 w-3" />
+                                {unackedByRule(rule.id)}
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="font-mono text-xs">
+                              {METRICS_DISPLAY[rule.metric]?.label ?? rule.metric} {OPERATORS_DISPLAY[rule.operator] ?? rule.operator} {rule.threshold}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">every {rule.checkIntervalMinutes}m</span>
+                          </div>
+                          {rule.lastValue !== null && (
+                            <p className="text-xs text-muted-foreground">
+                              Last value: {rule.lastValue}
+                              {rule.lastCheckedAt && ` (${new Date(rule.lastCheckedAt).toLocaleString()})`}
+                            </p>
+                          )}
+                          {rule.emails.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {rule.emails.map((email) => (
+                                <Badge key={email} variant="secondary" className="text-xs">
+                                  <Mail className="mr-1 h-3 w-3" />{email}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={rule.enabled}
+                            onCheckedChange={(checked) =>
+                              toggleMutation.mutate({ id: rule.id, enabled: checked === true })
+                            }
+                            size="sm"
+                          />
+                          <Dialog open={editRule?.id === rule.id} onOpenChange={(open) => { if (open) setEditRule(rule); else setEditRule(null); }}>
+                            <DialogTrigger asChild>
+                              <Button variant="ghost" size="sm"><Pencil className="h-3.5 w-3.5" /></Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-lg">
+                              <DialogHeader><DialogTitle>Edit Alert Rule</DialogTitle></DialogHeader>
+                              <AlertRuleForm
+                                catalogId={catalogId}
+                                namespace={namespace}
+                                tableName={table}
+                                existingRule={rule}
+                                onSuccess={() => setEditRule(null)}
+                              />
+                            </DialogContent>
+                          </Dialog>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="sm"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Alert Rule</AlertDialogTitle>
+                                <AlertDialogDescription>Delete rule &quot;{rule.name}&quot;? This cannot be undone.</AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction variant="destructive" onClick={() => deleteMutation.mutate(rule.id)}>
+                                  {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="alerts" className="mt-4">
+        <Card>
+          <CardContent className="pt-6">
+            {eventsLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {focusRuleId !== null && (
+                  <div className="flex items-center justify-between rounded-md border border-border/50 bg-muted/30 px-3 py-2 text-sm">
+                    <span className="text-muted-foreground">
+                      Filtered to rule <span className="font-medium text-foreground">{allRules?.find((r) => r.id === focusRuleId)?.name ?? `#${focusRuleId}`}</span>
+                    </span>
+                    <Button variant="ghost" size="sm" className="h-7" onClick={() => setFocusRuleId(null)}>
+                      <X className="mr-1 h-3.5 w-3.5" /> Show all
+                    </Button>
+                  </div>
+                )}
+                <AlertEventsList
+                events={focusRuleId !== null ? (allEvents ?? []).filter((e) => e.ruleId === focusRuleId) : (allEvents ?? [])}
+                pageSize={8}
+                emptyState={
+                  <div className="text-center py-8 text-muted-foreground">
+                    <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500 mb-2" />
+                    <p>No alert events</p>
+                    <p className="text-sm">All metrics are within thresholds.</p>
+                  </div>
+                }
+                renderItem={(event) => (
+                  <div
+                    className={cn(
+                      'flex items-center gap-3 rounded-md p-3 border',
+                      event.status === 'TRIGGERED' && 'border-l-4 border-l-red-500 bg-red-500/[0.03]',
+                    )}
+                  >
+                    <div className="shrink-0">
+                      {event.status === 'TRIGGERED' ? (
+                        <AlertTriangle className="h-4 w-4 text-red-500" />
+                      ) : event.status === 'RESOLVED' ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      ) : (
+                        <Bell className="h-4 w-4 text-blue-500" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium truncate">{event.ruleName}</span>
+                        <StatusBadge status={event.status} kind="alert" />
+                        {event.notified && (
+                          <Badge variant="secondary" className="text-xs"><Mail className="mr-1 h-3 w-3" /> Notified</Badge>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {METRICS_DISPLAY[event.metric]?.label ?? event.metric}: {event.currentValue} {OPERATORS_DISPLAY[event.operator] ?? event.operator} {event.threshold}
+                        {' · '}{new Date(event.triggeredAt).toLocaleString()}
+                      </p>
+                    </div>
+                    {event.status === 'TRIGGERED' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => acknowledgeMutation.mutate(event.id)}
+                        disabled={acknowledgeMutation.isPending}
+                      >
+                        <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Ack
+                      </Button>
                     )}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium truncate">{event.ruleName}</span>
-                      <StatusBadge status={event.status} kind="alert" />
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {METRICS_DISPLAY[event.metric]?.label ?? event.metric}: {event.currentValue} {OPERATORS_DISPLAY[event.operator] ?? event.operator} {event.threshold}
-                      {' | '}{new Date(event.triggeredAt).toLocaleString()}
-                    </p>
-                  </div>
-                  {event.status === 'TRIGGERED' && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => acknowledgeMutation.mutate(event.id)}
-                      disabled={acknowledgeMutation.isPending}
-                    >
-                      <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Ack
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+                )}
+              />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
+    </Tabs>
   );
 }
 
@@ -2015,7 +2099,7 @@ function StatMiniCard({ label, value, icon, color }: {
   label: string; value: string | number; icon: React.ReactNode; color: string;
 }) {
   return (
-    <Card className="glass shadow-card">
+    <Card className="glass shadow-card stat-card-hover">
       <CardContent className="pt-4 flex items-center gap-3">
         <div className={color}>{icon}</div>
         <div>

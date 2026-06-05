@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { AlertRuleResponse, CreateAlertRuleRequest, AlertEventResponse } from '@/types';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { AlertEventsList } from '@/components/alerts/AlertEventsList';
 
 const METRICS: Record<string, { label: string; unit: string }> = {
   SNAPSHOT_COUNT: { label: 'Snapshot Count', unit: '' },
@@ -70,20 +71,21 @@ export function Alerts() {
         <div className="space-y-3">
           {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-20 w-full" />)}
         </div>
-      ) : !events || events.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <CheckCircle2 className="h-12 w-12 text-emerald-500 mb-4" />
-            <p className="text-muted-foreground text-lg">No alert events</p>
-            <p className="text-sm text-muted-foreground">All metrics are within thresholds.</p>
-          </CardContent>
-        </Card>
       ) : (
-        <div className="space-y-2">
-          {events.map((event) => (
-            <AlertEventCard key={event.id} event={event} rules={rules} />
-          ))}
-        </div>
+        <AlertEventsList
+          events={events ?? []}
+          pageSize={10}
+          renderItem={(event) => <AlertEventCard event={event} rules={rules} />}
+          emptyState={
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-16">
+                <CheckCircle2 className="h-12 w-12 text-emerald-500 mb-4" />
+                <p className="text-muted-foreground text-lg">No alert events</p>
+                <p className="text-sm text-muted-foreground">All metrics are within thresholds.</p>
+              </CardContent>
+            </Card>
+          }
+        />
       )}
     </div>
   );
@@ -101,7 +103,6 @@ function AlertEventCard({ event, rules }: { event: AlertEventResponse; rules?: A
     onError: (err: Error) => toast.error(`Failed: ${err.message}`),
   });
 
-  // Find the rule to get catalogId for navigation
   const rule = rules?.find((r) => r.id === event.ruleId);
   const tableLink = rule
     ? `/catalogs/${rule.catalogId}/namespaces/${rule.namespace}/tables/${rule.tableName}`

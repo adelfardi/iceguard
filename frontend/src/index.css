@@ -169,6 +169,15 @@
   .dark .shadow-card {
     box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.15), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   }
+  .stat-card-hover {
+    transition: transform 200ms ease-out, box-shadow 200ms ease-out, border-color 200ms ease-out, background-color 200ms ease-out;
+  }
+  .stat-card-hover:hover {
+    transform: translateY(-2px);
+    border-color: hsl(238.7 83.5% 66.7% / 0.28);
+    box-shadow: 0 0 20px -5px hsl(238.7 83.5% 66.7% / 0.2);
+    background-color: color-mix(in oklab, var(--card) 95%, transparent);
+  }
 }
 
 @layer base {
