@@ -50,7 +50,7 @@ export function Dashboard() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {/* Card 1: Catalogs */}
-        <Card className="glass shadow-card">
+        <Card className="glass shadow-card stat-card-hover">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Catalogs</CardTitle>
             <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-primary">
@@ -70,7 +70,7 @@ export function Dashboard() {
         </Card>
 
         {/* Card 2: Recent Executions + mini pie */}
-        <Card className="glass shadow-card">
+        <Card className="glass shadow-card stat-card-hover">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Executions</CardTitle>
             <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-accent">
@@ -96,7 +96,7 @@ export function Dashboard() {
         </Card>
 
         {/* Card 3: Failed + mini donut */}
-        <Card className="glass shadow-card">
+        <Card className="glass shadow-card stat-card-hover">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Failed</CardTitle>
             <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-danger">
@@ -124,7 +124,7 @@ export function Dashboard() {
         </Card>
 
         {/* Card 4: Success + mini bar */}
-        <Card className="glass shadow-card">
+        <Card className="glass shadow-card stat-card-hover">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Success</CardTitle>
             <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-success">
