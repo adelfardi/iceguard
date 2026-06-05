@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question / discussion
+    url: https://github.com/OWNER/iceguard/discussions
+    about: Ask questions and discuss ideas (update OWNER once the repo exists).
