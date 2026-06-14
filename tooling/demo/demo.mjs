@@ -119,10 +119,28 @@ async function run() {
   // Snapshots tab (operation icons, newest first)
   await hoverClick(page.getByRole('tab', { name: /Snapshots/i }), 1800);
 
-  // Storage tab (health card)
-  await hoverClick(page.getByRole('tab', { name: /Storage/i }), 2000);
+  // Storage tab (health card) → scroll down to the partition navigator
+  await hoverClick(page.getByRole('tab', { name: /Storage/i }), 1600);
+  for (let i = 0; i < 4; i++) { await page.mouse.wheel(0, 320); await sleep(450); }
+  await sleep(1500);
+  await page.mouse.wheel(0, -1400);
+  await sleep(700);
 
-  await sleep(1200);
+  // Timeline (snapshots + executions)
+  await hoverClick(page.getByRole('tab', { name: /Timeline/i }), 2000);
+
+  // Lineage (schema-version history)
+  await hoverClick(page.getByRole('tab', { name: /Lineage/i }), 2000);
+
+  // Maintenance (expire / rewrite / rollback actions)
+  await hoverClick(page.getByRole('tab', { name: /Maintenance/i }), 2000);
+
+  // Alerts (threshold rules)
+  await hoverClick(page.getByRole('tab', { name: /Alerts/i }), 2000);
+
+  // ── 4. Pipelines page ──
+  await goto('/pipelines');
+  await sleep(2200);
 
   await page.close();
   await context.close();
