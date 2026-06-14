@@ -7,6 +7,7 @@ export interface CatalogConfig {
   warehouse: string | null;
   properties: Record<string, string>;
   authType: 'NONE' | 'BEARER' | 'OAUTH2' | 'BASIC';
+  tags: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -31,6 +32,7 @@ export interface CreateCatalogRequest {
   properties?: Record<string, string>;
   authType?: 'NONE' | 'BEARER' | 'OAUTH2' | 'BASIC';
   credentials?: Record<string, string>;
+  tags?: string[];
 }
 
 export interface ConnectionTestResult {

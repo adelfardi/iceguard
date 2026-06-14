@@ -2,12 +2,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { catalogApi } from '@/api/client';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { CatalogForm } from '@/components/catalog/CatalogForm';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { CreateCatalogWizard } from '@/components/catalog/CreateCatalogWizard';
+import { ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
-
-const FORM_ID = 'create-catalog-form';
 
 export function CreateCatalog() {
   const queryClient = useQueryClient();
@@ -39,23 +36,11 @@ export function CreateCatalog() {
             Connect a new Iceberg REST, Nessie, or Polaris catalog
           </p>
         </div>
-        <Button
-          type="submit"
-          form={FORM_ID}
-          disabled={createMutation.isPending}
-          className="gradient-primary text-white border-0 hover:opacity-90 shrink-0"
-        >
-          {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Save
-        </Button>
       </div>
 
       <Card className="glass shadow-card">
         <CardContent className="pt-6">
-          <CatalogForm
-            id={FORM_ID}
-            hideSubmit
-            mode="create"
+          <CreateCatalogWizard
             pending={createMutation.isPending}
             onSubmit={(req) => createMutation.mutate(req)}
           />

@@ -2,6 +2,7 @@ package com.iceguard.dto.request;
 
 import com.iceguard.model.CatalogConfig.AuthType;
 import jakarta.validation.constraints.NotBlank;
+import java.util.List;
 import java.util.Map;
 
 public record UpdateCatalogRequest(
@@ -10,5 +11,6 @@ public record UpdateCatalogRequest(
         String warehouse,
         Map<String, String> properties,
         AuthType authType,
-        Map<String, String> credentials
+        Map<String, String> credentials,
+        List<String> tags
 ) {}
