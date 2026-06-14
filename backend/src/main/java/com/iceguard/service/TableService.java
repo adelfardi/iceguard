@@ -14,6 +14,7 @@ import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.data.GenericRecord;
 import org.apache.iceberg.data.IcebergGenerics;
+import org.apache.iceberg.data.InternalRecordWrapper;
 import org.apache.iceberg.data.Record;
 import org.apache.iceberg.data.parquet.GenericParquetWriter;
 import org.apache.iceberg.io.CloseableIterable;
@@ -44,6 +45,12 @@ public class TableService {
 
     @Inject
     CatalogService catalogService;
+
+    @Inject
+    NessieHistoryService nessieHistoryService;
+
+    @Inject
+    StorageHealthThresholdsService storageHealthThresholdsService;
 
     public List<NamespaceResponse> listNamespaces(Long catalogId) {
         RESTCatalog catalog = getCatalog(catalogId);
@@ -249,6 +256,16 @@ public class TableService {
     }
 
     public List<SnapshotResponse> listSnapshots(Long catalogId, String namespace, String tableName) {
+        // Nessie exposes only the current Iceberg snapshot; reconstruct the full
+        // history from its commit log so the client sees it transparently.
+        CatalogConfig cfg = CatalogConfig.findById(catalogId);
+        if (cfg != null && isNessie(cfg)) {
+            try {
+                return nessieSnapshots(cfg, namespace, tableName);
+            } catch (Exception e) {
+                // Commit log unavailable — fall back to the single Iceberg snapshot below.
+            }
+        }
         Table table = loadTable(catalogId, namespace, tableName);
         return StreamSupport.stream(table.snapshots().spliterator(), false)
                 .map(s -> new SnapshotResponse(
@@ -260,6 +277,43 @@ public class TableService {
                         s.manifestListLocation()
                 ))
                 .toList();
+    }
+
+    /** Nessie catalogs are detected the same way as the UI: name/URI contains "nessie". */
+    private static boolean isNessie(CatalogConfig cfg) {
+        return (cfg.name + " " + cfg.uri).toLowerCase().contains("nessie");
+    }
+
+    /** Map the Nessie commit log to the SnapshotResponse shape (newest-first). */
+    private List<SnapshotResponse> nessieSnapshots(CatalogConfig cfg, String namespace, String tableName) {
+        List<NessieCommitResponse> commits = nessieHistoryService.tableHistory(cfg.id, namespace, tableName);
+        // Several Nessie commits can reference the same Iceberg snapshot id (metadata-only
+        // changes). Keep one entry per distinct snapshot (newest commit wins) so ids are unique.
+        List<NessieCommitResponse> distinct = new ArrayList<>();
+        Set<Long> seen = new HashSet<>();
+        for (NessieCommitResponse c : commits) {
+            if (c.snapshotId() != null && seen.add(c.snapshotId())) distinct.add(c);
+        }
+        List<SnapshotResponse> out = new ArrayList<>(distinct.size());
+        for (int i = 0; i < distinct.size(); i++) {
+            NessieCommitResponse c = distinct.get(i);
+            Long parent = (i + 1 < distinct.size()) ? distinct.get(i + 1).snapshotId() : null;
+            Map<String, String> summary = new LinkedHashMap<>();
+            if (c.hash() != null) summary.put("nessie.commit", c.hash());
+            if (c.message() != null) summary.put("nessie.message", c.message());
+            out.add(new SnapshotResponse(
+                    c.snapshotId(), parent, c.committedAt(), nessieOperation(c.message()), summary, null));
+        }
+        return out;
+    }
+
+    private static String nessieOperation(String message) {
+        if (message == null) return "commit";
+        String m = message.toLowerCase();
+        for (String op : List.of("append", "overwrite", "replace", "delete")) {
+            if (m.contains("iceberg " + op)) return op;
+        }
+        return "commit";
     }
 
     public TableStatisticsResponse getStatistics(Long catalogId, String namespace, String tableName) {
@@ -286,9 +340,18 @@ public class TableService {
             if (val != null) importantProps.put(key, val);
         }
 
+        // Nessie: count the commits (full history), not the single Iceberg snapshot.
+        int snapshotCount = snapshots.size();
+        CatalogConfig statCfg = CatalogConfig.findById(catalogId);
+        if (statCfg != null && isNessie(statCfg)) {
+            try {
+                snapshotCount = nessieSnapshots(statCfg, namespace, tableName).size();
+            } catch (Exception ignored) { /* keep the Iceberg count on failure */ }
+        }
+
         return new TableStatisticsResponse(
                 namespace, tableName,
-                snapshots.size(),
+                snapshotCount,
                 totalDataFiles, totalDataSize, totalDeleteFiles, totalRecords,
                 table.spec().fields().size(),
                 table.schema().columns().size(),
@@ -361,8 +424,12 @@ public class TableService {
                 // Group rows by their partition value; write one file per partition.
                 Map<org.apache.iceberg.PartitionKey, List<GenericRecord>> groups = new LinkedHashMap<>();
                 org.apache.iceberg.PartitionKey key = new org.apache.iceberg.PartitionKey(spec, schema);
+                // Partition transforms operate on Iceberg's internal value representation
+                // (e.g. timestamptz -> Long micros), but GenericRecord holds Java objects
+                // (OffsetDateTime). Wrap each record so transforms see the internal form.
+                InternalRecordWrapper wrapper = new InternalRecordWrapper(schema.asStruct());
                 for (GenericRecord record : records) {
-                    key.partition(record);
+                    key.partition(wrapper.wrap(record));
                     groups.computeIfAbsent(key.copy(), k -> new ArrayList<>()).add(record);
                 }
                 for (var entry : groups.entrySet()) {
@@ -585,10 +652,12 @@ public class TableService {
         Snapshot snapshot = table.currentSnapshot();
         if (snapshot == null) {
             return new StorageOverviewResponse(namespace, tableName, partitioned, partitionFields,
-                    -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, targetSize, 0, 0, emptyHistogram());
+                    -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, targetSize, 0, 0, 0, emptyHistogram());
         }
 
-        StorageScan scan = scanStorage(table, snapshot);
+        StorageHealthThresholdsService.StorageHealthThresholdsConfig thresholds =
+                storageHealthThresholdsService.resolve();
+        StorageScan scan = scanStorage(table, snapshot, thresholds.smallFileSizeBytes());
 
         List<StorageOverviewResponse.FileSizeBucket> histogram = new ArrayList<>();
         for (int i = 0; i < SIZE_LABELS.length; i++) {
@@ -606,7 +675,7 @@ public class TableService {
                 scan.totalSize, scan.totalRecords,
                 scan.dataFiles == 0 ? 0 : scan.minSize, scan.maxSize,
                 scan.dataFiles == 0 ? 0 : scan.totalSize / scan.dataFiles,
-                targetSize, scan.byPartition.size(), maxPartitionSize, histogram);
+                targetSize, scan.byPartition.size(), maxPartitionSize, scan.smallFiles, histogram);
     }
 
     /** Server-side paginated, filtered and sorted partition list. */
@@ -618,7 +687,7 @@ public class TableService {
             return new PartitionPageResponse(0, offset, limit, List.of());
         }
 
-        StorageScan scan = scanStorage(table, snapshot);
+        StorageScan scan = scanStorage(table, snapshot, storageHealthThresholdsService.resolve().smallFileSizeBytes());
 
         String q = search == null ? "" : search.trim().toLowerCase();
         Comparator<StorageOverviewResponse.PartitionStorage> cmp = switch (sort == null ? "size" : sort) {
@@ -645,13 +714,14 @@ public class TableService {
     }
 
     /** Single full pass over the current snapshot's manifests. */
-    private StorageScan scanStorage(Table table, Snapshot snapshot) {
+    private StorageScan scanStorage(Table table, Snapshot snapshot, long smallFileSizeBytes) {
         Map<String, Agg> byPartition = new LinkedHashMap<>();
         long[] bucketCount = new long[SIZE_LABELS.length];
         long[] bucketBytes = new long[SIZE_LABELS.length];
         long totalSize = 0, totalRecords = 0, dataFiles = 0;
         long minSize = Long.MAX_VALUE, maxSize = 0;
         long deleteFiles = 0, posDel = 0, eqDel = 0;
+        long smallFiles = 0;
 
         FileIO io = table.io();
         Map<Integer, PartitionSpec> specs = table.specs();
@@ -669,6 +739,9 @@ public class TableService {
                         totalSize += size;
                         totalRecords += rec;
                         dataFiles++;
+                        if (size < smallFileSizeBytes) {
+                            smallFiles++;
+                        }
                         minSize = Math.min(minSize, size);
                         maxSize = Math.max(maxSize, size);
                         int b = bucketIndex(size);
@@ -706,6 +779,7 @@ public class TableService {
         s.deleteFiles = deleteFiles;
         s.posDel = posDel;
         s.eqDel = eqDel;
+        s.smallFiles = smallFiles;
         return s;
     }
 
@@ -713,7 +787,7 @@ public class TableService {
         Map<String, Agg> byPartition;
         long[] bucketCount;
         long[] bucketBytes;
-        long totalSize, totalRecords, dataFiles, minSize, maxSize, deleteFiles, posDel, eqDel;
+        long totalSize, totalRecords, dataFiles, minSize, maxSize, deleteFiles, posDel, eqDel, smallFiles;
     }
 
     public StorageFilesResponse listPartitionFiles(Long catalogId, String namespace, String tableName,

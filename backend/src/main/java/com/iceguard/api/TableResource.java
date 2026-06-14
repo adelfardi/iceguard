@@ -7,11 +7,13 @@ import com.iceguard.dto.response.DataSampleResponse;
 import com.iceguard.dto.response.PartitionPageResponse;
 import com.iceguard.dto.response.SchemaHistoryResponse;
 import com.iceguard.dto.response.SnapshotDiffResponse;
+import com.iceguard.dto.response.NessieCommitResponse;
 import com.iceguard.dto.response.SnapshotResponse;
 import com.iceguard.dto.response.StorageFilesResponse;
 import com.iceguard.dto.response.StorageOverviewResponse;
 import com.iceguard.dto.response.TableResponse;
 import com.iceguard.dto.response.TableStatisticsResponse;
+import com.iceguard.service.NessieHistoryService;
 import com.iceguard.service.TableService;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
@@ -28,6 +30,21 @@ public class TableResource {
 
     @Inject
     TableService tableService;
+
+    @Inject
+    NessieHistoryService nessieHistoryService;
+
+    /**
+     * Real change history for a table on a Nessie catalog, reconstructed from
+     * Nessie's commit log (Iceberg only exposes the single current snapshot).
+     */
+    @GET
+    @Path("/{table}/nessie-history")
+    public List<NessieCommitResponse> nessieHistory(@PathParam("catalogId") Long catalogId,
+                                                    @PathParam("namespace") String namespace,
+                                                    @PathParam("table") String table) {
+        return nessieHistoryService.tableHistory(catalogId, namespace, table);
+    }
 
     @GET
     public List<String> listTables(@PathParam("catalogId") Long catalogId,
