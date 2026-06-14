@@ -458,6 +458,8 @@ export interface StorageHealthThresholds {
   smallFilesEnabled: boolean;
   deleteRatioEnabled: boolean;
   compactionEnabled: boolean;
+  dataFilesThreshold: number;
+  snapshotCountThreshold: number;
   updatedAt: string | null;
 }
 

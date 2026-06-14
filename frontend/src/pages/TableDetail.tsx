@@ -29,6 +29,7 @@ import {
   Bell, AlertTriangle, CheckCircle2, Mail, History, Activity,
   Layers, ChevronRight, ArrowLeft, Search, Gauge, Settings2,
   Network, GitCompare, ArrowRight, ArrowUp, ArrowDown, Minus, X,
+  Repeat, Zap, Paintbrush, Undo2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -67,6 +68,8 @@ const DEFAULT_HEALTH_THRESHOLDS: import('@/types').SaveStorageHealthThresholdsRe
   smallFilesEnabled: true,
   deleteRatioEnabled: true,
   compactionEnabled: true,
+  dataFilesThreshold: 100,
+  snapshotCountThreshold: 50,
 };
 
 type HealthTone = 'good' | 'warn' | 'bad';
@@ -111,6 +114,33 @@ function computeStorageHealthStatus(
   return { tone, hasAlert: tone !== 'good' };
 }
 
+/* Snapshot operation → icon + color, kept in sync with the timeline's VIS_META. */
+const SNAPSHOT_OP_META: Record<string, { Icon: typeof Plus; className: string }> = {
+  append: { Icon: Plus, className: 'text-emerald-400' },
+  overwrite: { Icon: RefreshCw, className: 'text-blue-400' },
+  replace: { Icon: Repeat, className: 'text-cyan-400' },
+  delete: { Icon: Trash2, className: 'text-red-400' },
+  EXPIRE_SNAPSHOTS: { Icon: Camera, className: 'text-violet-400' },
+  REWRITE_MANIFESTS: { Icon: FileStack, className: 'text-amber-400' },
+  REWRITE_DATA_FILES: { Icon: Database, className: 'text-emerald-400' },
+  REMOVE_ORPHAN_FILES: { Icon: Paintbrush, className: 'text-rose-400' },
+  ROLLBACK: { Icon: Undo2, className: 'text-blue-400' },
+};
+
+function SnapshotOperationBadge({ operation }: { operation: string }) {
+  const meta = SNAPSHOT_OP_META[operation] ?? { Icon: Zap, className: 'text-slate-400' };
+  const { Icon } = meta;
+  return (
+    <Badge className="bg-violet-500/10 text-violet-400 border-0 gap-1">
+      <Icon className={cn('h-3.5 w-3.5', meta.className)} />
+      {operation}
+    </Badge>
+  );
+}
+
+const DATA_PAGE_SIZE = 10;
+const SNAPSHOT_PAGE_SIZE = 10;
+
 export function TableDetail() {
   const { catalogId, namespace, table } = useParams<{ catalogId: string; namespace: string; table: string }>();
   const catId = Number(catalogId);
@@ -120,6 +150,7 @@ export function TableDetail() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [newTableName, setNewTableName] = useState('');
   const [detailSnapshot, setDetailSnapshot] = useState<SnapshotInfo | null>(null);
+  const [snapshotPage, setSnapshotPage] = useState(0);
 
   const { data: tableDetail, isLoading } = useQuery({
     queryKey: ['table', catId, namespace, table],
@@ -155,6 +186,20 @@ export function TableDetail() {
   const storageHealthAlert = storageData
     ? computeStorageHealthStatus(storageData, storageThresholds ?? DEFAULT_HEALTH_THRESHOLDS)
     : null;
+
+  // Most recent first (descending by commit time).
+  const snapshotList = React.useMemo(
+    () => [...(snapshots ?? [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
+    [snapshots],
+  );
+  React.useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(snapshotList.length / SNAPSHOT_PAGE_SIZE) - 1);
+    if (snapshotPage > maxPage) setSnapshotPage(maxPage);
+  }, [snapshotList.length, snapshotPage]);
+  const pagedSnapshots = snapshotList.slice(
+    snapshotPage * SNAPSHOT_PAGE_SIZE,
+    (snapshotPage + 1) * SNAPSHOT_PAGE_SIZE,
+  );
 
   const deleteMutation = useMutation({
     mutationFn: () => tableApi.drop(catId, namespace!, table!),
@@ -348,19 +393,23 @@ export function TableDetail() {
           <Card><CardHeader><CardTitle className="flex items-center gap-2"><Camera className="h-5 w-5 text-violet-500" /> Snapshots <Badge className="bg-violet-500/10 text-violet-400 border-0 ml-2">{snapshots?.length ?? 0}</Badge></CardTitle></CardHeader>
             <CardContent>
               {snapshots?.length === 0 ? <p className="text-muted-foreground py-4 text-center">No snapshots</p> : (
+                <>
                 <UiTable><TableHeader><TableRow><TableHead>Snapshot ID</TableHead><TableHead>Timestamp</TableHead><TableHead>Operation</TableHead><TableHead>Added Files</TableHead><TableHead>Added Records</TableHead><TableHead className="text-right"></TableHead></TableRow></TableHeader>
-                  <TableBody>{snapshots?.map((snap) => (
+                  <TableBody>{pagedSnapshots.map((snap) => (
                     <TableRow key={snap.snapshotId}>
                       <TableCell className="font-mono text-sm text-blue-400">{snap.snapshotId}</TableCell>
                       <TableCell className="text-muted-foreground">{new Date(snap.timestamp).toLocaleString()}</TableCell>
-                      <TableCell><Badge className="bg-violet-500/10 text-violet-400 border-0">{snap.operation}</Badge></TableCell>
+                      <TableCell><SnapshotOperationBadge operation={snap.operation} /></TableCell>
                       <TableCell className="text-emerald-400 font-medium">{snap.summary['added-data-files'] ?? '-'}</TableCell>
                       <TableCell className="text-amber-400 font-medium">{snap.summary['added-records'] ?? '-'}</TableCell>
                       <TableCell className="text-right">
                         <Button variant="outline" size="sm" onClick={() => setDetailSnapshot(snap)}>Details</Button>
                       </TableCell>
                     </TableRow>
-                  ))}</TableBody></UiTable>)}
+                  ))}</TableBody></UiTable>
+                <ClientPagination page={snapshotPage} pageSize={SNAPSHOT_PAGE_SIZE} total={snapshotList.length} onPageChange={setSnapshotPage} />
+                </>
+                )}
             </CardContent></Card>
 
           {/* Snapshot detail dialog */}
@@ -374,7 +423,7 @@ export function TableDetail() {
                   <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
                     <span className="text-muted-foreground">Snapshot ID</span><span className="font-mono break-all">{detailSnapshot.snapshotId}</span>
                     <span className="text-muted-foreground">Parent</span><span className="font-mono break-all">{detailSnapshot.parentSnapshotId ?? '—'}</span>
-                    <span className="text-muted-foreground">Operation</span><span><Badge className="bg-violet-500/10 text-violet-400 border-0">{detailSnapshot.operation}</Badge></span>
+                    <span className="text-muted-foreground">Operation</span><span><SnapshotOperationBadge operation={detailSnapshot.operation} /></span>
                     <span className="text-muted-foreground">Timestamp</span><span>{new Date(detailSnapshot.timestamp).toLocaleString()}</span>
                   </div>
                   <div>
@@ -426,8 +475,61 @@ export function TableDetail() {
 
 /* ═══════════════════════ Overview Tab ═══════════════════════ */
 
-const DATA_FILES_THRESHOLD = 100;
-const SNAPSHOT_THRESHOLD = 50;
+/* Edit a single Overview gauge threshold (data files / snapshots). Persisted in the
+   shared storage-health-thresholds record, like the Health card thresholds. */
+function OverviewThresholdsDialog({ thresholds, field, title }: {
+  thresholds?: import('@/types').StorageHealthThresholds;
+  field: 'dataFilesThreshold' | 'snapshotCountThreshold';
+  title: string;
+}) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState<number>(DEFAULT_HEALTH_THRESHOLDS[field]);
+
+  React.useEffect(() => {
+    if (open) setValue(thresholds?.[field] ?? DEFAULT_HEALTH_THRESHOLDS[field]);
+  }, [open, thresholds, field]);
+
+  const saveMutation = useMutation({
+    mutationFn: () => storageHealthApi.save({ ...(thresholds ?? DEFAULT_HEALTH_THRESHOLDS), [field]: value }),
+    onSuccess: () => {
+      toast.success('Threshold updated');
+      queryClient.invalidateQueries({ queryKey: ['storage-health-thresholds'] });
+      setOpen(false);
+    },
+    onError: (err) => toast.error(`Failed: ${apiErrorMessage(err)}`),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground" title={`Edit ${title.toLowerCase()}`}>
+          <Settings2 className="h-3.5 w-3.5" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-xs">
+        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
+        <form onSubmit={(e) => { e.preventDefault(); saveMutation.mutate(); }} className="space-y-4 text-sm">
+          <div className="space-y-1.5">
+            <Label htmlFor="ov-threshold">Threshold</Label>
+            <Input
+              id="ov-threshold"
+              type="number"
+              min={1}
+              value={value}
+              onChange={(e) => { const n = Number(e.target.value); setValue(Number.isFinite(n) ? n : 0); }}
+            />
+            <p className="text-xs text-muted-foreground">The gauge turns red once the count exceeds this value.</p>
+          </div>
+          <Button type="submit" className="w-full" disabled={saveMutation.isPending}>
+            {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 type CommitGranularity = 'minute' | 'hour' | 'day';
 
@@ -468,18 +570,25 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
     queryKey: ['table-recent-executions', catalogId, namespace, table],
     queryFn: () => executionApi.search({ catalogId, namespace, table, size: 6, page: 0 }),
   });
+  const { data: thresholds } = useQuery({
+    queryKey: ['storage-health-thresholds'],
+    queryFn: storageHealthApi.get,
+  });
   const [commitGranularity, setCommitGranularity] = useState<CommitGranularity>('hour');
 
   if (!stats) return <Skeleton className="h-96 w-full" />;
 
+  const dfThreshold = thresholds?.dataFilesThreshold ?? DEFAULT_HEALTH_THRESHOLDS.dataFilesThreshold;
+  const snapThreshold = thresholds?.snapshotCountThreshold ?? DEFAULT_HEALTH_THRESHOLDS.snapshotCountThreshold;
+
   const dataFilesPie = [
-    { name: 'Data Files', value: stats.totalDataFiles, color: stats.totalDataFiles > DATA_FILES_THRESHOLD ? COLORS.rose : COLORS.emerald },
-    { name: 'Remaining', value: Math.max(0, DATA_FILES_THRESHOLD - stats.totalDataFiles), color: '#e5e7eb' },
+    { name: 'Data Files', value: stats.totalDataFiles, color: stats.totalDataFiles > dfThreshold ? COLORS.rose : COLORS.emerald },
+    { name: 'Remaining', value: Math.max(0, dfThreshold - stats.totalDataFiles), color: '#e5e7eb' },
   ];
 
   const snapshotsPie = [
-    { name: 'Snapshots', value: stats.snapshotCount, color: stats.snapshotCount > SNAPSHOT_THRESHOLD ? COLORS.amber : COLORS.blue },
-    { name: 'Remaining', value: Math.max(0, SNAPSHOT_THRESHOLD - stats.snapshotCount), color: '#e5e7eb' },
+    { name: 'Snapshots', value: stats.snapshotCount, color: stats.snapshotCount > snapThreshold ? COLORS.amber : COLORS.blue },
+    { name: 'Remaining', value: Math.max(0, snapThreshold - stats.snapshotCount), color: '#e5e7eb' },
   ];
 
   const commitData = bucketSnapshots(snapshots, commitGranularity);
@@ -526,7 +635,10 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
 
         {/* Snapshots Gauge */}
         <Card>
-          <CardHeader className="pb-0"><CardTitle className="flex items-center gap-2 text-sm"><Camera className="h-4 w-4 text-violet-500" /> Snapshots vs Threshold</CardTitle></CardHeader>
+          <CardHeader className="pb-0 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="flex items-center gap-2 text-sm"><Camera className="h-4 w-4 text-violet-500" /> Snapshots vs Threshold</CardTitle>
+            <OverviewThresholdsDialog thresholds={thresholds} field="snapshotCountThreshold" title="Snapshot threshold" />
+          </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
@@ -534,7 +646,7 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
                   {snapshotsPie.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
                 <text x="50%" y="46%" textAnchor="middle" dominantBaseline="middle" className="fill-foreground text-2xl font-bold">{stats.snapshotCount}</text>
-                <text x="50%" y="58%" textAnchor="middle" dominantBaseline="middle" className="fill-muted-foreground text-xs">/ {SNAPSHOT_THRESHOLD}</text>
+                <text x="50%" y="58%" textAnchor="middle" dominantBaseline="middle" className="fill-muted-foreground text-xs">/ {snapThreshold}</text>
                 <Tooltip />
               </PieChart>
             </ResponsiveContainer>
@@ -543,7 +655,10 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
 
         {/* Data Files Gauge */}
         <Card>
-          <CardHeader className="pb-0"><CardTitle className="flex items-center gap-2 text-sm"><HardDrive className="h-4 w-4 text-emerald-500" /> Data Files vs Threshold</CardTitle></CardHeader>
+          <CardHeader className="pb-0 flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="flex items-center gap-2 text-sm"><HardDrive className="h-4 w-4 text-emerald-500" /> Data Files vs Threshold</CardTitle>
+            <OverviewThresholdsDialog thresholds={thresholds} field="dataFilesThreshold" title="Data files threshold" />
+          </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
@@ -551,7 +666,7 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
                   {dataFilesPie.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
                 <text x="50%" y="46%" textAnchor="middle" dominantBaseline="middle" className="fill-foreground text-2xl font-bold">{stats.totalDataFiles}</text>
-                <text x="50%" y="58%" textAnchor="middle" dominantBaseline="middle" className="fill-muted-foreground text-xs">/ {DATA_FILES_THRESHOLD}</text>
+                <text x="50%" y="58%" textAnchor="middle" dominantBaseline="middle" className="fill-muted-foreground text-xs">/ {dfThreshold}</text>
                 <Tooltip />
               </PieChart>
             </ResponsiveContainer>
@@ -962,19 +1077,51 @@ function PartitionsTab({ catalogId, namespace, table, tableDetail }: {
 
 const ROW_LIMITS = [10, 25, 50, 100, 500] as const;
 
+function ClientPagination({
+  page, pageSize, total, onPageChange,
+}: {
+  page: number; pageSize: number; total: number; onPageChange: (page: number) => void;
+}) {
+  if (total <= pageSize) return null;
+  const from = page * pageSize + 1;
+  const to = Math.min(total, (page + 1) * pageSize);
+  return (
+    <div className="flex items-center justify-between pt-3 text-xs text-muted-foreground">
+      <span>{from.toLocaleString()}–{to.toLocaleString()} of {total.toLocaleString()}</span>
+      <div className="flex items-center gap-1">
+        <Button variant="outline" size="sm" className="h-7" disabled={page === 0} onClick={() => onPageChange(Math.max(0, page - 1))}>
+          <ArrowLeft className="h-3.5 w-3.5" /> Prev
+        </Button>
+        <Button variant="outline" size="sm" className="h-7" disabled={to >= total} onClick={() => onPageChange(page + 1)}>
+          Next <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function DataSampleTab({ catalogId, namespace, table }: { catalogId: number; namespace: string; table: string }) {
-  const [limit, setLimit] = useState(100);
+  const [fetchLimit, setFetchLimit] = useState(10);
+  const [page, setPage] = useState(0);
   const { data: sample, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['table-sample', catalogId, namespace, table, limit],
-    queryFn: () => tableApi.sampleData(catalogId, namespace, table, limit),
+    queryKey: ['table-sample', catalogId, namespace, table, fetchLimit],
+    queryFn: () => tableApi.sampleData(catalogId, namespace, table, fetchLimit),
   });
+
+  React.useEffect(() => { setPage(0); }, [fetchLimit]);
+
+  const rows = sample?.rows ?? [];
+  const pagedRows = rows.slice(page * DATA_PAGE_SIZE, (page + 1) * DATA_PAGE_SIZE);
+  const rowFrom = rows.length === 0 ? 0 : page * DATA_PAGE_SIZE + 1;
+  const rowTo = Math.min(rows.length, (page + 1) * DATA_PAGE_SIZE);
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span className="flex items-center gap-2"><TableIcon className="h-5 w-5 text-emerald-500" /> Data Sample</span>
           <div className="flex items-center gap-2">
-            <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))}>
+            <Select value={String(fetchLimit)} onValueChange={(v) => setFetchLimit(Number(v))}>
               <SelectTrigger className="w-[100px] h-8 text-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -995,11 +1142,16 @@ function DataSampleTab({ catalogId, namespace, table }: { catalogId: number; nam
         : !sample || sample.rows.length === 0 ? <div className="text-center py-8 text-muted-foreground"><TableIcon className="mx-auto h-8 w-8 mb-2" /><p>No data available</p></div>
         : <div>
             <div className="text-xs text-muted-foreground mb-2">
-              Showing <span className="font-semibold text-foreground">{sample.rows.length}</span> of {sample.rowCount} rows{sample.hasMore && ' (more available)'}
+              {rows.length > DATA_PAGE_SIZE ? (
+                <>Showing <span className="font-semibold text-foreground">{rowFrom}–{rowTo}</span> of {rows.length} loaded rows</>
+              ) : (
+                <>Showing <span className="font-semibold text-foreground">{sample.rows.length}</span> of {sample.rowCount} rows{sample.hasMore && ' (more available)'}</>
+              )}
             </div>
             <ScrollArea className="w-full"><div className="min-w-max"><UiTable><TableHeader><TableRow>{sample.columns.map((col) => <TableHead key={col} className="whitespace-nowrap">{col}</TableHead>)}</TableRow></TableHeader>
-              <TableBody>{sample.rows.map((row, idx) => <TableRow key={idx}>{sample.columns.map((col) => <TableCell key={col} className="font-mono text-xs whitespace-nowrap">{row[col] === null || row[col] === undefined ? <span className="text-muted-foreground italic">null</span> : String(row[col])}</TableCell>)}</TableRow>)}</TableBody>
+              <TableBody>{pagedRows.map((row, idx) => <TableRow key={page * DATA_PAGE_SIZE + idx}>{sample.columns.map((col) => <TableCell key={col} className="font-mono text-xs whitespace-nowrap">{row[col] === null || row[col] === undefined ? <span className="text-muted-foreground italic">null</span> : String(row[col])}</TableCell>)}</TableRow>)}</TableBody>
             </UiTable></div><ScrollBar orientation="horizontal" /></ScrollArea>
+            <ClientPagination page={page} pageSize={DATA_PAGE_SIZE} total={rows.length} onPageChange={setPage} />
           </div>}
       </CardContent>
     </Card>
@@ -1990,6 +2142,8 @@ function HealthThresholdsDialog({ thresholds }: { thresholds?: import('@/types')
         smallFilesEnabled: thresholds.smallFilesEnabled,
         deleteRatioEnabled: thresholds.deleteRatioEnabled,
         compactionEnabled: thresholds.compactionEnabled,
+        dataFilesThreshold: thresholds.dataFilesThreshold,
+        snapshotCountThreshold: thresholds.snapshotCountThreshold,
       } : DEFAULT_HEALTH_THRESHOLDS);
     }
   }, [open, thresholds]);

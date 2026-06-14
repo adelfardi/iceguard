@@ -15,5 +15,7 @@ public record StorageHealthThresholdsResponse(
         boolean smallFilesEnabled,
         boolean deleteRatioEnabled,
         boolean compactionEnabled,
+        int dataFilesThreshold,
+        int snapshotCountThreshold,
         Instant updatedAt
 ) {}

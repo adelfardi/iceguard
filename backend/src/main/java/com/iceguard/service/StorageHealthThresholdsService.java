@@ -52,6 +52,8 @@ public class StorageHealthThresholdsService {
         config.smallFilesEnabled = request.smallFilesEnabled();
         config.deleteRatioEnabled = request.deleteRatioEnabled();
         config.compactionEnabled = request.compactionEnabled();
+        config.dataFilesThreshold = request.dataFilesThreshold();
+        config.snapshotCountThreshold = request.snapshotCountThreshold();
 
         if (existing.isEmpty()) {
             repository.persist(config);
@@ -78,6 +80,12 @@ public class StorageHealthThresholdsService {
         if (r.compactionEnabled() && (r.compactionTargetRatioPercent() < 1 || r.compactionTargetRatioPercent() > 100)) {
             throw new CatalogOperationException("Compaction target ratio must be between 1 and 100");
         }
+        if (r.dataFilesThreshold() < 1) {
+            throw new CatalogOperationException("Data files threshold must be at least 1");
+        }
+        if (r.snapshotCountThreshold() < 1) {
+            throw new CatalogOperationException("Snapshot count threshold must be at least 1");
+        }
     }
 
     private StorageHealthThresholdsResponse defaults() {
@@ -95,6 +103,8 @@ public class StorageHealthThresholdsService {
                 d.smallFilesEnabled,
                 d.deleteRatioEnabled,
                 d.compactionEnabled,
+                d.dataFilesThreshold,
+                d.snapshotCountThreshold,
                 null);
     }
 
@@ -112,6 +122,8 @@ public class StorageHealthThresholdsService {
                 config.smallFilesEnabled,
                 config.deleteRatioEnabled,
                 config.compactionEnabled,
+                config.dataFilesThreshold,
+                config.snapshotCountThreshold,
                 config.updatedAt);
     }
 

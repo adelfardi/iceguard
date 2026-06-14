@@ -12,5 +12,7 @@ public record SaveStorageHealthThresholdsRequest(
         boolean avgVsTargetEnabled,
         boolean smallFilesEnabled,
         boolean deleteRatioEnabled,
-        boolean compactionEnabled
+        boolean compactionEnabled,
+        int dataFilesThreshold,
+        int snapshotCountThreshold
 ) {}
