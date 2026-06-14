@@ -81,7 +81,10 @@ async function run() {
   // ── 1. Catalogs: cards with colored tags + filter ──
   await goto('/catalogs');
   await page.mouse.move(640, 360, { steps: 15 });
-  await sleep(1800);
+  await sleep(1700);
+  // Filter to the prod + pre-prod environments (hides untagged/external catalogs).
+  await hoverClick(page.getByRole('button', { name: 'prod', exact: true }), 900);
+  await hoverClick(page.getByRole('button', { name: 'pre-prod', exact: true }), 1800);
 
   // ── 2. Add Catalog wizard — engine step with real logos ──
   await goto('/catalogs/new');
@@ -91,7 +94,7 @@ async function run() {
   await hoverClick(nessie, 1100);
   // Next → Connection, fill name + URI
   await hoverClick(page.getByRole('button', { name: 'Next' }), 800);
-  await typeInto(page.locator('#name'), 'analytics-prod');
+  await typeInto(page.locator('#name'), 'orders-preprod');
   await sleep(300);
   await typeInto(page.locator('#uri'), 'http://nessie-catalog:8181');
   await sleep(700);

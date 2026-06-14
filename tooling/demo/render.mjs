@@ -22,9 +22,9 @@ run(['-y', '-i', webm, '-movflags', '+faststart', '-pix_fmt', 'yuv420p',
 
 // GIF (2-pass palette, 960px, 12fps)
 const pal = path.join(OUT, 'palette.png');
-run(['-y', '-i', webm, '-vf', 'fps=10,scale=960:-1:flags=lanczos,palettegen=stats_mode=diff', pal]);
+run(['-y', '-i', webm, '-vf', 'fps=10,scale=880:-1:flags=lanczos,palettegen=stats_mode=diff', pal]);
 run(['-y', '-i', webm, '-i', pal, '-lavfi',
-  'fps=10,scale=960:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3',
+  'fps=10,scale=880:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3',
   path.join(DOCS, 'demo.gif')]);
 
 console.log('Wrote docs/demo.gif and docs/demo.mp4');
