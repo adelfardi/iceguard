@@ -44,6 +44,12 @@ public class StorageHealthThresholds extends PanacheEntity {
     @Column(name = "compaction_enabled")
     public boolean compactionEnabled = true;
 
+    @Column(name = "data_files_threshold")
+    public int dataFilesThreshold = 100;
+
+    @Column(name = "snapshot_count_threshold")
+    public int snapshotCountThreshold = 50;
+
     @Column(name = "updated_at")
     public Instant updatedAt;
 
