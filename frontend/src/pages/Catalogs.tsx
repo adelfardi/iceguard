@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { CatalogForm } from '@/components/catalog/CatalogForm';
+import { Input } from '@/components/ui/input';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,14 +21,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Database, Plus, Trash2, Loader2, Check, AlertTriangle, Pencil } from 'lucide-react';
-import { useState } from 'react';
+import { Database, Plus, Trash2, Loader2, Check, AlertTriangle, Pencil, Tag, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useCatalogStore } from '@/hooks/useCatalogStore';
 import { guessCatalogType, CATALOG_TYPE_META } from '@/types';
 import type { CreateCatalogRequest, CatalogConfig } from '@/types';
 import { cn } from '@/lib/utils';
+import { tagColorStyle } from '@/lib/tagColor';
 
 export function Catalogs() {
   const queryClient = useQueryClient();
@@ -60,6 +62,30 @@ export function Catalogs() {
 
   const [testResults, setTestResults] = useState<Record<number, { success: boolean; message: string } | 'loading'>>({});
   const [deleteTarget, setDeleteTarget] = useState<CatalogConfig | null>(null);
+  const [tagsTarget, setTagsTarget] = useState<CatalogConfig | null>(null);
+  const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
+
+  const setTagsMutation = useMutation({
+    mutationFn: ({ id, tags }: { id: number; tags: string[] }) => catalogApi.setTags(id, tags),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['catalogs'] });
+      setTagsTarget(null);
+      toast.success('Tags updated');
+    },
+    onError: (err: Error) => toast.error(`Failed to update tags: ${err.message}`),
+  });
+
+  // Distinct tags across all catalogs (for the filter bar) + filtered list.
+  const allTags = Array.from(new Set((catalogs ?? []).flatMap((c) => c.tags ?? []))).sort();
+  const toggleTagFilter = (tag: string) =>
+    setTagFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag); else next.add(tag);
+      return next;
+    });
+  const filteredCatalogs = (catalogs ?? []).filter(
+    (c) => tagFilter.size === 0 || (c.tags ?? []).some((t) => tagFilter.has(t)),
+  );
 
   const testMutation = useMutation({
     mutationFn: catalogApi.testConnection,
@@ -95,6 +121,32 @@ export function Catalogs() {
           </Link>
         </Button>
       </div>
+
+      {/* Tag filter bar */}
+      {allTags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="flex items-center gap-1 text-xs text-muted-foreground"><Tag className="h-3.5 w-3.5" /> Filter:</span>
+          {allTags.map((tag) => {
+            const on = tagFilter.has(tag);
+            return (
+              <button key={tag} onClick={() => toggleTagFilter(tag)}>
+                <Badge
+                  variant="outline"
+                  className={cn('cursor-pointer text-xs transition-all', on ? 'ring-1 ring-offset-1 ring-offset-background' : 'opacity-70 hover:opacity-100')}
+                  style={tagColorStyle(tag)}
+                >
+                  {tag}
+                </Badge>
+              </button>
+            );
+          })}
+          {tagFilter.size > 0 && (
+            <button className="text-xs text-muted-foreground hover:text-foreground" onClick={() => setTagFilter(new Set())}>
+              Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Edit dialog */}
       <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null); }}>
@@ -139,7 +191,9 @@ export function Catalogs() {
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {catalogs?.map((catalog) => {
+          {filteredCatalogs.length === 0 ? (
+            <p className="col-span-full text-center text-sm text-muted-foreground py-10">No catalogs match the selected tags.</p>
+          ) : filteredCatalogs.map((catalog) => {
             const type = guessCatalogType(catalog);
             const meta = CATALOG_TYPE_META[type];
             const isActive = catalog.id === activeCatalogId;
@@ -178,10 +232,23 @@ export function Catalogs() {
                     {catalog.uri}
                   </p>
                   {catalog.warehouse && (
-                    <p className="text-xs text-muted-foreground mb-3 truncate">
+                    <p className="text-xs text-muted-foreground mb-2 truncate">
                       {catalog.warehouse}
                     </p>
                   )}
+                  {/* Tags */}
+                  <div className="flex flex-wrap items-center gap-1 mb-3">
+                    {(catalog.tags ?? []).map((tag) => (
+                      <Badge key={tag} variant="outline" className="text-[11px] font-normal" style={tagColorStyle(tag)}>{tag}</Badge>
+                    ))}
+                    <button
+                      className="inline-flex items-center gap-0.5 rounded border border-dashed border-muted-foreground/30 px-1.5 py-0.5 text-[11px] text-muted-foreground hover:border-indigo-500/50 hover:text-foreground transition-colors"
+                      onClick={() => setTagsTarget(catalog)}
+                      title="Edit tags"
+                    >
+                      <Tag className="h-3 w-3" /> {(catalog.tags ?? []).length === 0 ? 'Add tags' : 'Edit'}
+                    </button>
+                  </div>
                   <div className="flex items-center gap-1 mt-2">
                     {!isActive && (
                       <button
@@ -233,6 +300,14 @@ export function Catalogs() {
         </div>
       )}
 
+      <CatalogTagsDialog
+        catalog={tagsTarget}
+        suggestions={allTags}
+        pending={setTagsMutation.isPending}
+        onOpenChange={(o) => { if (!o) setTagsTarget(null); }}
+        onSave={(tags) => { if (tagsTarget) setTagsMutation.mutate({ id: tagsTarget.id, tags }); }}
+      />
+
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -259,5 +334,79 @@ export function Catalogs() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+function CatalogTagsDialog({ catalog, suggestions, pending, onOpenChange, onSave }: {
+  catalog: CatalogConfig | null;
+  suggestions: string[];
+  pending: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSave: (tags: string[]) => void;
+}) {
+  const [draft, setDraft] = useState<string[]>([]);
+  const [input, setInput] = useState('');
+
+  // Reset the draft whenever a different catalog is opened.
+  useEffect(() => {
+    if (catalog) { setDraft(catalog.tags ?? []); setInput(''); }
+  }, [catalog]);
+
+  const addTag = (raw: string) => {
+    const tag = raw.trim();
+    if (tag && !draft.includes(tag)) setDraft((d) => [...d, tag]);
+    setInput('');
+  };
+  const removeTag = (tag: string) => setDraft((d) => d.filter((t) => t !== tag));
+
+  const unusedSuggestions = suggestions.filter((s) => !draft.includes(s));
+
+  return (
+    <Dialog open={!!catalog} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Tags — {catalog?.name}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-1.5 min-h-8">
+            {draft.length === 0 && <span className="text-sm text-muted-foreground">No tags yet.</span>}
+            {draft.map((tag) => (
+              <Badge key={tag} variant="outline" className="gap-1 text-xs font-normal" style={tagColorStyle(tag)}>
+                {tag}
+                <button onClick={() => removeTag(tag)} className="hover:opacity-70" title="Remove">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+          <Input
+            placeholder="Add a tag and press Enter (e.g. prod, draft)"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); addTag(input); }
+              else if (e.key === 'Backspace' && input === '' && draft.length > 0) removeTag(draft[draft.length - 1]);
+            }}
+          />
+          {unusedSuggestions.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Existing:</span>
+              {unusedSuggestions.map((s) => (
+                <button key={s} onClick={() => addTag(s)}>
+                  <Badge variant="outline" className="cursor-pointer text-[11px] font-normal hover:border-indigo-500/50">+ {s}</Badge>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button onClick={() => onSave(draft)} disabled={pending}>
+              {pending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

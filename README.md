@@ -11,6 +11,12 @@
 [![Frontend](https://img.shields.io/badge/frontend-React%20%C2%B7%20TypeScript%20%C2%B7%20Vite-61DAFB.svg)](frontend)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
+<br/>
+
+<img src="docs/demo.gif" alt="IceGuard demo — browse catalogs, add a catalog, inspect a table" width="90%" />
+
+<sub>Browse tagged catalogs → add a catalog with the guided wizard → inspect a table's metadata, snapshots and storage. <a href="docs/demo.mp4">▶ MP4 version</a></sub>
+
 </div>
 
 > ⚠️ **Independent community project — not affiliated with or endorsed by the Apache Software Foundation.**

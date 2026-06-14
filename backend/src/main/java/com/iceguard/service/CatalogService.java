@@ -53,6 +53,13 @@ public class CatalogService {
     }
 
     @Transactional
+    public CatalogResponse setTags(Long id, java.util.List<String> tags) {
+        CatalogConfig entity = findOrThrow(id);
+        entity.tags = mapper.tagsToJson(tags);
+        return mapper.toResponse(entity);
+    }
+
+    @Transactional
     public void delete(Long id) {
         CatalogConfig entity = findOrThrow(id);
         catalogFactory.evict(id);

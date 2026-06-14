@@ -7,6 +7,7 @@ export interface CatalogConfig {
   warehouse: string | null;
   properties: Record<string, string>;
   authType: 'NONE' | 'BEARER' | 'OAUTH2' | 'BASIC';
+  tags: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -31,6 +32,7 @@ export interface CreateCatalogRequest {
   properties?: Record<string, string>;
   authType?: 'NONE' | 'BEARER' | 'OAUTH2' | 'BASIC';
   credentials?: Record<string, string>;
+  tags?: string[];
 }
 
 export interface ConnectionTestResult {
@@ -94,6 +96,7 @@ export interface StorageOverview {
   targetFileSizeBytes: number;
   partitionCount: number;
   maxPartitionSizeBytes: number;
+  smallFileCount: number;
   fileSizeHistogram: FileSizeBucket[];
 }
 
@@ -443,6 +446,26 @@ export interface SaveSmtpConfigRequest {
   tls: boolean;
   enabled: boolean;
 }
+
+export interface StorageHealthThresholds {
+  avgVsTargetWarnPercent: number;
+  avgVsTargetBadPercent: number;
+  smallFileSizeKb: number;
+  smallFilesWarnPercent: number;
+  smallFilesBadPercent: number;
+  deleteRatioWarnPercent: number;
+  deleteRatioBadPercent: number;
+  compactionTargetRatioPercent: number;
+  avgVsTargetEnabled: boolean;
+  smallFilesEnabled: boolean;
+  deleteRatioEnabled: boolean;
+  compactionEnabled: boolean;
+  dataFilesThreshold: number;
+  snapshotCountThreshold: number;
+  updatedAt: string | null;
+}
+
+export type SaveStorageHealthThresholdsRequest = Omit<StorageHealthThresholds, 'updatedAt'>;
 
 // ── Alert types ──
 

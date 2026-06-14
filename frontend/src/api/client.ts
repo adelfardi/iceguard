@@ -18,11 +18,13 @@ import type {
   PipelineRunResponse,
   RenameTableRequest,
   SaveSmtpConfigRequest,
+  SaveStorageHealthThresholdsRequest,
   SchemaUpdateRequest,
   PartitionSpecUpdateRequest,
   SparkClusterConfig,
   SparkClusterRequest,
   SmtpConfigResponse,
+  StorageHealthThresholds,
   SnapshotInfo,
   TableDetail,
   TableStatistics,
@@ -56,6 +58,8 @@ export const catalogApi = {
   update: (id: number, data: CreateCatalogRequest) =>
     api.put<CatalogConfig>(`/catalogs/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/catalogs/${id}`),
+  setTags: (id: number, tags: string[]) =>
+    api.put<CatalogConfig>(`/catalogs/${id}/tags`, { tags }).then((r) => r.data),
   testConnection: (id: number) =>
     api.post<ConnectionTestResult>(`/catalogs/${id}/test-connection`).then((r) => r.data),
 };
@@ -268,6 +272,13 @@ export const smtpApi = {
     api.post<SmtpConfigResponse>('/settings/smtp', data).then((r) => r.data),
   test: () =>
     api.post<{ success: boolean; message: string }>('/settings/smtp/test').then((r) => r.data),
+};
+
+export const storageHealthApi = {
+  get: () =>
+    api.get<StorageHealthThresholds>('/settings/storage-health-thresholds').then((r) => r.data),
+  save: (data: SaveStorageHealthThresholdsRequest) =>
+    api.put<StorageHealthThresholds>('/settings/storage-health-thresholds', data).then((r) => r.data),
 };
 
 export const alertApi = {

@@ -55,19 +55,34 @@ function TabsList({
   )
 }
 
+const tabsTriggerVariants = cva(
+  "relative inline-flex items-center justify-center gap-1.5 border-none font-medium whitespace-nowrap text-muted-foreground transition-all cursor-pointer hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  {
+    variants: {
+      variant: {
+        default:
+          "h-[calc(100%-1px)] flex-1 rounded-md px-2 py-1 text-sm data-active:text-indigo-400 data-active:bg-transparent after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-indigo-500 after:opacity-0 after:transition-all data-active:after:opacity-100",
+        pill:
+          "rounded-md px-2 py-1.5 text-xs font-normal text-muted-foreground/75 group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start group-data-vertical/tabs:py-1.5 data-active:bg-transparent data-active:text-foreground data-active:font-medium hover:bg-muted/40 hover:text-foreground",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
+
 function TabsTrigger({
   className,
+  variant = "default",
   ...props
-}: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+}: React.ComponentProps<typeof TabsPrimitive.Trigger> &
+  VariantProps<typeof tabsTriggerVariants>) {
   return (
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
-      className={cn(
-        "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border-none px-2 py-1 text-sm font-medium whitespace-nowrap text-muted-foreground transition-all cursor-pointer hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 group-data-vertical/tabs:w-full group-data-vertical/tabs:justify-start [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        "data-active:text-indigo-400 data-active:bg-transparent",
-        "after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-full after:bg-indigo-500 after:opacity-0 after:transition-all data-active:after:opacity-100",
-        className
-      )}
+      data-variant={variant}
+      className={cn(tabsTriggerVariants({ variant }), className)}
       {...props}
     />
   )
@@ -86,4 +101,4 @@ function TabsContent({
   )
 }
 
-export { Tabs, TabsList, TabsTrigger, TabsContent, tabsListVariants }
+export { Tabs, TabsList, TabsTrigger, TabsContent, tabsListVariants, tabsTriggerVariants }

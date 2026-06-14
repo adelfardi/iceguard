@@ -68,13 +68,25 @@ fi
 echo ""
 echo "── Registering in IceGuard backend ──"
 
-# Backend runs in Docker → use Docker service names
+# How the IceGuard BACKEND reaches the catalogs depends on where it runs:
+#   - backend on the host (mvn quarkus:dev) → localhost + published ports   (default)
+#   - backend in Docker (compose `backend`) → docker service names; set SEED_BACKEND_IN_DOCKER=1
+if [ "${SEED_BACKEND_IN_DOCKER:-0}" = "1" ]; then
+  REST_URI="http://rest-catalog:8181";  NESSIE_URI="http://nessie-catalog:8181"
+  POLARIS_BASE="http://polaris:8181";   S3_ENDPOINT="http://minio:9000"
+else
+  REST_URI="http://localhost:8181";     NESSIE_URI="http://localhost:8183"
+  POLARIS_BASE="http://localhost:8182"; S3_ENDPOINT="http://localhost:9000"
+fi
+# MinIO S3 creds for the client FileIO (so table loads / file analysis can read S3).
+MINIO_CREDS="\"s3.endpoint\":\"${S3_ENDPOINT}\",\"s3.access-key-id\":\"minioadmin\",\"s3.secret-access-key\":\"minioadmin\",\"s3.path-style-access\":\"true\",\"client.region\":\"us-east-1\""
+
 curl -s -X POST "${ICEGUARD_API}/api/catalogs" -H "Content-Type: application/json" \
-  -d '{"name":"rest-catalog","uri":"http://rest-catalog:8181","warehouse":"s3://warehouse/rest/","authType":"NONE","properties":{}}' \
+  -d "{\"name\":\"rest-catalog\",\"uri\":\"${REST_URI}\",\"warehouse\":\"s3://warehouse/rest/\",\"authType\":\"NONE\",\"credentials\":{${MINIO_CREDS}}}" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  rest-catalog (id={d.get(\"id\",\"?\")})')" 2>/dev/null
 
 curl -s -X POST "${ICEGUARD_API}/api/catalogs" -H "Content-Type: application/json" \
-  -d '{"name":"nessie","uri":"http://nessie-catalog:8181","warehouse":"s3://warehouse/nessie/","authType":"NONE","properties":{}}' \
+  -d "{\"name\":\"nessie\",\"uri\":\"${NESSIE_URI}\",\"warehouse\":\"s3://warehouse/nessie/\",\"authType\":\"NONE\",\"credentials\":{${MINIO_CREDS}}}" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  nessie (id={d.get(\"id\",\"?\")})')" 2>/dev/null
 
 if [ -n "${POLARIS_TOKEN:-}" ]; then
@@ -82,7 +94,7 @@ if [ -n "${POLARIS_TOKEN:-}" ]; then
   # OAuth2 client_credentials ("credential") so the client refreshes its own token.
   # AWS S3 creds for the client FileIO come from env (same as the Polaris container).
   curl -s -X POST "${ICEGUARD_API}/api/catalogs" -H "Content-Type: application/json" \
-    -d "{\"name\":\"polaris\",\"uri\":\"http://polaris:8181/api/catalog\",\"warehouse\":\"polaris-warehouse\",\"authType\":\"OAUTH2\",\"credentials\":{\"credential\":\"polaris-root:polaris-secret\",\"oauth2-server-uri\":\"http://polaris:8181/api/catalog/v1/oauth/tokens\",\"scope\":\"PRINCIPAL_ROLE:ALL\",\"s3.region\":\"${POLARIS_S3_REGION}\",\"s3.access-key-id\":\"${POLARIS_AWS_ACCESS_KEY_ID:-}\",\"s3.secret-access-key\":\"${POLARIS_AWS_SECRET_ACCESS_KEY:-}\",\"s3.session-token\":\"${POLARIS_AWS_SESSION_TOKEN:-}\"}}" \
+    -d "{\"name\":\"polaris\",\"uri\":\"${POLARIS_BASE}/api/catalog\",\"warehouse\":\"polaris-warehouse\",\"authType\":\"OAUTH2\",\"credentials\":{\"credential\":\"polaris-root:polaris-secret\",\"oauth2-server-uri\":\"${POLARIS_BASE}/api/catalog/v1/oauth/tokens\",\"scope\":\"PRINCIPAL_ROLE:ALL\",\"s3.region\":\"${POLARIS_S3_REGION}\",\"s3.access-key-id\":\"${POLARIS_AWS_ACCESS_KEY_ID:-}\",\"s3.secret-access-key\":\"${POLARIS_AWS_SECRET_ACCESS_KEY:-}\",\"s3.session-token\":\"${POLARIS_AWS_SESSION_TOKEN:-}\"}}" \
     | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  polaris (id={d.get(\"id\",\"?\")})')" 2>/dev/null
 fi
 

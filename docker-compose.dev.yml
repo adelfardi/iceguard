@@ -38,9 +38,14 @@ services:
       - iceguard
 
   # ─── Catalog 1: Iceberg REST Catalog (Apache reference) ───
+  # Backed by PostgreSQL (db `restcat`) via the postgres-enabled fixture image, so
+  # namespaces/tables persist across restarts (the stock image uses ephemeral SQLite).
   rest-catalog:
-    image: apache/iceberg-rest-fixture:latest
+    build:
+      context: ./docker/iceberg-rest-pg
+    image: iceguard-iceberg-rest-pg
     container_name: iceguard-rest-catalog
+    restart: unless-stopped
     ports:
       - "8181:8181"
     environment:
@@ -51,16 +56,27 @@ services:
       CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
       CATALOG_S3_ENDPOINT: http://minio:9000
       CATALOG_S3_PATH__STYLE__ACCESS: "true"
+      # Persistent JDBC catalog backend (PostgreSQL).
+      CATALOG_CATALOG__IMPL: org.apache.iceberg.jdbc.JdbcCatalog
+      CATALOG_URI: jdbc:postgresql://postgres:5432/restcat
+      CATALOG_JDBC_USER: iceguard
+      CATALOG_JDBC_PASSWORD: iceguard
     depends_on:
       minio-init:
         condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     networks:
       - iceguard
 
   # ─── Catalog 2: Second REST Catalog (simulates Nessie/staging env) ───
+  # Backed by PostgreSQL (db `nessiecat`) — same persistent setup as rest-catalog.
   nessie-catalog:
-    image: apache/iceberg-rest-fixture:latest
+    build:
+      context: ./docker/iceberg-rest-pg
+    image: iceguard-iceberg-rest-pg
     container_name: iceguard-nessie-catalog
+    restart: unless-stopped
     ports:
       - "8183:8181"
     environment:
@@ -71,9 +87,16 @@ services:
       CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
       CATALOG_S3_ENDPOINT: http://minio:9000
       CATALOG_S3_PATH__STYLE__ACCESS: "true"
+      # Persistent JDBC catalog backend (PostgreSQL).
+      CATALOG_CATALOG__IMPL: org.apache.iceberg.jdbc.JdbcCatalog
+      CATALOG_URI: jdbc:postgresql://postgres:5432/nessiecat
+      CATALOG_JDBC_USER: iceguard
+      CATALOG_JDBC_PASSWORD: iceguard
     depends_on:
       minio-init:
         condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     networks:
       - iceguard
 
@@ -104,6 +127,7 @@ services:
   polaris:
     image: apache/polaris:latest
     container_name: iceguard-polaris
+    restart: unless-stopped
     ports:
       - "8182:8181"
     depends_on:
@@ -165,6 +189,7 @@ services:
   postgres:
     image: postgres:16-alpine
     container_name: iceguard-postgres
+    restart: unless-stopped
     ports:
       - "5433:5432"
     environment:
@@ -173,8 +198,8 @@ services:
       POSTGRES_PASSWORD: iceguard
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      # Creates the dedicated `polaris` database on a fresh volume (Polaris persistence).
-      - ./scripts/init-polaris-db.sql:/docker-entrypoint-initdb.d/10-polaris-db.sql:ro
+      # Creates the dedicated catalog databases (polaris, restcat, nessiecat) on a fresh volume.
+      - ./scripts/init-catalog-dbs.sql:/docker-entrypoint-initdb.d/10-catalog-dbs.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U iceguard"]
       interval: 5s
