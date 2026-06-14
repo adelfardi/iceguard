@@ -94,6 +94,7 @@ export interface StorageOverview {
   targetFileSizeBytes: number;
   partitionCount: number;
   maxPartitionSizeBytes: number;
+  smallFileCount: number;
   fileSizeHistogram: FileSizeBucket[];
 }
 
@@ -443,6 +444,24 @@ export interface SaveSmtpConfigRequest {
   tls: boolean;
   enabled: boolean;
 }
+
+export interface StorageHealthThresholds {
+  avgVsTargetWarnPercent: number;
+  avgVsTargetBadPercent: number;
+  smallFileSizeKb: number;
+  smallFilesWarnPercent: number;
+  smallFilesBadPercent: number;
+  deleteRatioWarnPercent: number;
+  deleteRatioBadPercent: number;
+  compactionTargetRatioPercent: number;
+  avgVsTargetEnabled: boolean;
+  smallFilesEnabled: boolean;
+  deleteRatioEnabled: boolean;
+  compactionEnabled: boolean;
+  updatedAt: string | null;
+}
+
+export type SaveStorageHealthThresholdsRequest = Omit<StorageHealthThresholds, 'updatedAt'>;
 
 // ── Alert types ──
 

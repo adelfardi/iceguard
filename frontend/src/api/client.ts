@@ -18,11 +18,13 @@ import type {
   PipelineRunResponse,
   RenameTableRequest,
   SaveSmtpConfigRequest,
+  SaveStorageHealthThresholdsRequest,
   SchemaUpdateRequest,
   PartitionSpecUpdateRequest,
   SparkClusterConfig,
   SparkClusterRequest,
   SmtpConfigResponse,
+  StorageHealthThresholds,
   SnapshotInfo,
   TableDetail,
   TableStatistics,
@@ -268,6 +270,13 @@ export const smtpApi = {
     api.post<SmtpConfigResponse>('/settings/smtp', data).then((r) => r.data),
   test: () =>
     api.post<{ success: boolean; message: string }>('/settings/smtp/test').then((r) => r.data),
+};
+
+export const storageHealthApi = {
+  get: () =>
+    api.get<StorageHealthThresholds>('/settings/storage-health-thresholds').then((r) => r.data),
+  save: (data: SaveStorageHealthThresholdsRequest) =>
+    api.put<StorageHealthThresholds>('/settings/storage-health-thresholds', data).then((r) => r.data),
 };
 
 export const alertApi = {

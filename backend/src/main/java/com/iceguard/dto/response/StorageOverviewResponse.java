@@ -23,6 +23,7 @@ public record StorageOverviewResponse(
         long targetFileSizeBytes,
         int partitionCount,
         long maxPartitionSizeBytes,
+        long smallFileCount,
         List<FileSizeBucket> fileSizeHistogram
 ) {
     public record FileSizeBucket(String label, long count, long totalBytes) {}

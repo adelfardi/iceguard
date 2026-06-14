@@ -30,19 +30,40 @@ with `--profile db` / `--profile sandbox`; see README). `docker-compose.dev.yml`
 docker compose -f docker-compose.dev.yml up -d
 
 # Services:
-#   REST Catalog:      http://localhost:8181      (Apache reference)
-#   Nessie Catalog:    http://localhost:8183      (second REST catalog)
+#   REST Catalog:      http://localhost:8181      (Apache reference; Postgres-backed)
+#   Nessie Catalog:    http://localhost:8183      (second REST catalog; Postgres-backed)
 #   Polaris:           http://localhost:8182      (OAuth2 + real AWS S3)
 #   MinIO S3:          http://localhost:9000
 #   MinIO Console:     http://localhost:9001      (minioadmin/minioadmin)
-#   PostgreSQL:        localhost:5433             (iceguard/iceguard; also DB `polaris`)
+#   PostgreSQL:        localhost:5433             (iceguard/iceguard; DBs: iceguard, polaris, restcat, nessiecat)
 
-# Run backend with Docker profile
-cd backend && mvn quarkus:dev -Dquarkus.profile=docker
+# Run the backend on the host (live reload). Use the default `dev` profile, which points
+# the datasource at localhost:5433 — do NOT pass -Dquarkus.profile=docker (no %docker block
+# exists, so it falls back to localhost:5432 and fails to connect). The `docker` profile is
+# only for the containerized `backend` service, where compose injects the JDBC URL via env.
+cd backend && mvn quarkus:dev
 
-# Seed all catalogs (after backend is running)
+# Seed all catalogs (after backend is running). Registers catalogs in IceGuard with localhost
+# URIs by default (matches a host-run backend). If the backend runs in Docker instead, use:
+#   SEED_BACKEND_IN_DOCKER=1 ./scripts/seed-catalog.sh   (registers docker service-name URIs)
 ./scripts/seed-catalog.sh
 ```
+
+### Catalog persistence (REST / Nessie on PostgreSQL)
+The two `apache/iceberg-rest-fixture` catalogs (REST, Nessie) are backed by **PostgreSQL**
+(`JdbcCatalog`, DBs `restcat` / `nessiecat`), not the stock ephemeral SQLite in `/tmp` — so
+namespaces/tables survive container restarts. This needs the Postgres JDBC driver, which the
+stock image lacks, so they build from `docker/iceberg-rest-pg/Dockerfile` (adds the driver and
+starts via classpath). The catalog DBs are created by `scripts/init-catalog-dbs.sql` on a fresh
+volume; `JdbcCatalog` auto-creates its `iceberg_tables` tables on first connect.
+
+### Catalog URIs: host vs Docker backend
+Registered catalog URIs must be reachable **from wherever the backend runs**. A host-run
+`quarkus:dev` backend cannot resolve Docker service names (`http://rest-catalog:8181` →
+UnknownHostException) — use the published `localhost` ports instead: REST `localhost:8181`,
+Nessie `localhost:8183`, Polaris `localhost:8182`, MinIO `s3.endpoint=http://localhost:9000`.
+The containerized `backend` service uses the Docker service names. `seed-catalog.sh` picks the
+right set via `SEED_BACKEND_IN_DOCKER` (see above).
 
 ### Polaris (persisted in Postgres, real AWS S3)
 Polaris state is persisted in the `polaris` Postgres DB (`polaris.persistence.type=relational-jdbc`),
@@ -78,6 +99,7 @@ tables now persist** across the restart. For no expiry, use a long-lived IAM use
   carries the AWS `s3.*` creds so the client FileIO can write. Temporary STS creds expire (~1h) — refresh
   them in the Polaris env and the IceGuard catalog credentials when writes start failing with `403`.
 - Nessie 0.99 Catalog Server has complex S3 credential config — we use a REST Catalog bridge
+  (`apache/iceberg-rest-fixture`, Postgres-backed; see "Catalog persistence" above).
 - Java API executor only *analyses* data files (no real compaction). Real `rewrite_data_files`
   runs via the Spark executor, which requires `spark-sql` on PATH (or `iceguard.spark.sql-path`).
   In `docker-compose.dev.yml` the backend is built from `backend/Dockerfile.spark`, which bundles Spark
