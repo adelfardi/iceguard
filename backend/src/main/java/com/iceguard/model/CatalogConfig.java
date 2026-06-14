@@ -30,6 +30,10 @@ public class CatalogConfig extends PanacheEntity {
     @Column(columnDefinition = "text")
     public String credentials = "{}";
 
+    /** JSON array of free-form labels, e.g. ["prod","draft"]. */
+    @Column(columnDefinition = "text")
+    public String tags = "[]";
+
     @Column(name = "created_at", nullable = false, updatable = false)
     public Instant createdAt;
 

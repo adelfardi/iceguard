@@ -58,6 +58,8 @@ export const catalogApi = {
   update: (id: number, data: CreateCatalogRequest) =>
     api.put<CatalogConfig>(`/catalogs/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/catalogs/${id}`),
+  setTags: (id: number, tags: string[]) =>
+    api.put<CatalogConfig>(`/catalogs/${id}/tags`, { tags }).then((r) => r.data),
   testConnection: (id: number) =>
     api.post<ConnectionTestResult>(`/catalogs/${id}/test-connection`).then((r) => r.data),
 };

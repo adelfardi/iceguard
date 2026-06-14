@@ -1,6 +1,7 @@
 package com.iceguard.api;
 
 import com.iceguard.dto.request.CreateCatalogRequest;
+import com.iceguard.dto.request.SetCatalogTagsRequest;
 import com.iceguard.dto.request.UpdateCatalogRequest;
 import com.iceguard.dto.response.CatalogResponse;
 import com.iceguard.dto.response.ConnectionTestResponse;
@@ -41,6 +42,12 @@ public class CatalogResource {
     @Path("/{id}")
     public CatalogResponse update(@PathParam("id") Long id, @Valid UpdateCatalogRequest request) {
         return service.update(id, request);
+    }
+
+    @PUT
+    @Path("/{id}/tags")
+    public CatalogResponse setTags(@PathParam("id") Long id, SetCatalogTagsRequest request) {
+        return service.setTags(id, request.tags());
     }
 
     @DELETE
