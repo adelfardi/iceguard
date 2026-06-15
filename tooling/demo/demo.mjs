@@ -36,7 +36,9 @@ const THEME_SCRIPT = `
   document.documentElement.classList.remove('dark');
 `;
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Global pacing factor (<1 = snappier) to keep the long walkthrough GIF reasonable.
+const PACE = Number(process.env.DEMO_PACE || 0.7);
+const sleep = (ms) => new Promise((r) => setTimeout(r, Math.round(ms * PACE)));
 
 async function run() {
   const browser = await chromium.launch({ headless: true });
@@ -97,9 +99,25 @@ async function run() {
   await page.mouse.wheel(0, -1400);
   await sleep(600);
 
-  // Timeline + Lineage
-  await hoverClick(page.getByRole('tab', { name: /Timeline/i }), 1700);
-  await hoverClick(page.getByRole('tab', { name: /Lineage/i }), 1700);
+  // Timeline → hover a snapshot item (append/replace) to surface its info tooltip
+  await hoverClick(page.getByRole('tab', { name: /Timeline/i }), 1300);
+  try {
+    const item = page.locator('.vis-item').nth(3);
+    const box = await item.boundingBox();
+    if (box) {
+      const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+      await page.mouse.move(cx, cy, { steps: 22 });
+      await page.mouse.move(cx + 1, cy, { steps: 2 });   // nudge so vis-timeline shows the tooltip
+      await sleep(2600);                                  // operation · #id · time · +files/records
+    }
+  } catch { /* ignore */ }
+
+  // Lineage → scroll down through the schema-evolution history
+  await hoverClick(page.getByRole('tab', { name: /Lineage/i }), 1300);
+  for (let i = 0; i < 3; i++) { await page.mouse.wheel(0, 300); await sleep(450); }
+  await sleep(1300);
+  await page.mouse.wheel(0, -1100);
+  await sleep(600);
 
   // Maintenance → open the "Rewrite Data Files" dialog (popup)
   await hoverClick(page.getByRole('tab', { name: /Maintenance/i }), 1400);
@@ -123,7 +141,22 @@ async function run() {
   await hoverClick(page.getByRole('button', { name: 'prod', exact: true }), 800);
   await hoverClick(page.getByRole('button', { name: 'pre-prod', exact: true }), 1800);
 
-  // ── 3. Add Catalog wizard — engine step with real logos ──
+  // ── 3. Catalog switcher → namespaces → quick create table ──
+  try {
+    await hoverClick(page.getByRole('button', { name: 'Select catalog' }), 900);
+    await hoverClick(page.getByRole('menuitem').filter({ hasText: 'lakehouse-prod' }), 1700); // → /catalogs/1
+    // Expand a namespace (in the main content, not the sidebar tree) → Create Table
+    const main = page.locator('main');
+    await hoverClick(main.getByRole('button', { name: /^analytics/ }), 1400);
+    await hoverClick(main.getByRole('link', { name: /Create Table/i }), 1500);
+    // Start the table wizard (just enough to show it)
+    await typeInto(page.locator('#table-name'), 'customer_orders');
+    await sleep(700);
+    await hoverClick(page.getByRole('button', { name: 'Next' }), 1600); // → Columns step
+    await sleep(800);
+  } catch (e) { console.warn('browse/create-table step skipped:', e.message); }
+
+  // ── 4. Add Catalog wizard — engine step with real logos ──
   await goto('/catalogs/new');
   await sleep(1100);
   const nessie = page.getByRole('button').filter({ hasText: 'Nessie' });
@@ -143,7 +176,7 @@ async function run() {
   await page.keyboard.press('Enter');
   await sleep(1500);
 
-  // ── 4. Pipelines — list, then a pipeline's runs ──
+  // ── 5. Pipelines — list, then a pipeline's runs ──
   await goto('/pipelines');
   await sleep(1800);
   // Open the pipeline's runs
