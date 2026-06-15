@@ -78,29 +78,62 @@ async function run() {
     await sleep(900);
   }
 
-  // ── 1. Catalogs: cards with colored tags + filter ──
+  // ── 1. Table detail — start here, walk every section ──
+  await goto('/catalogs/1/namespaces/analytics/tables/events');
+  await sleep(2300);
+
+  // Metadata (schema / partitions / properties sub-tabs)
+  await hoverClick(page.getByRole('tab', { name: /Metadata/i }), 1200);
+  await hoverClick(page.getByRole('tab', { name: /Partitions/i }), 1000);
+  await hoverClick(page.getByRole('tab', { name: /Properties/i }), 1100);
+
+  // Snapshots (operation icons, newest first)
+  await hoverClick(page.getByRole('tab', { name: /Snapshots/i }), 1600);
+
+  // Storage (health) → scroll down to the partition navigator
+  await hoverClick(page.getByRole('tab', { name: /Storage/i }), 1500);
+  for (let i = 0; i < 4; i++) { await page.mouse.wheel(0, 320); await sleep(420); }
+  await sleep(1400);
+  await page.mouse.wheel(0, -1400);
+  await sleep(600);
+
+  // Timeline + Lineage
+  await hoverClick(page.getByRole('tab', { name: /Timeline/i }), 1700);
+  await hoverClick(page.getByRole('tab', { name: /Lineage/i }), 1700);
+
+  // Maintenance → open the "Rewrite Data Files" dialog (popup)
+  await hoverClick(page.getByRole('tab', { name: /Maintenance/i }), 1400);
+  const rewriteRun = page.locator('div.border-l-4')
+    .filter({ hasText: 'Rewrite Data Files' })
+    .getByRole('button', { name: 'Run' });
+  await hoverClick(rewriteRun, 600);
+  await page.getByRole('dialog').waitFor({ state: 'visible' }).catch(() => {});
+  await sleep(2600);                 // showcase the popup
+  await page.keyboard.press('Escape');
+  await sleep(900);
+
+  // Alerts (threshold rules)
+  await hoverClick(page.getByRole('tab', { name: /Alerts/i }), 1700);
+
+  // ── 2. Catalogs: realistic names + tag filter ──
   await goto('/catalogs');
   await page.mouse.move(640, 360, { steps: 15 });
-  await sleep(1700);
-  // Filter to the prod + pre-prod environments (hides untagged/external catalogs).
-  await hoverClick(page.getByRole('button', { name: 'prod', exact: true }), 900);
+  await sleep(1500);
+  // Filter to prod + pre-prod (hides the external catalog).
+  await hoverClick(page.getByRole('button', { name: 'prod', exact: true }), 800);
   await hoverClick(page.getByRole('button', { name: 'pre-prod', exact: true }), 1800);
 
-  // ── 2. Add Catalog wizard — engine step with real logos ──
+  // ── 3. Add Catalog wizard — engine step with real logos ──
   await goto('/catalogs/new');
-  await sleep(1200);
-  // Pick the Nessie engine card
+  await sleep(1100);
   const nessie = page.getByRole('button').filter({ hasText: 'Nessie' });
-  await hoverClick(nessie, 1100);
-  // Next → Connection, fill name + URI
+  await hoverClick(nessie, 1000);
   await hoverClick(page.getByRole('button', { name: 'Next' }), 800);
   await typeInto(page.locator('#name'), 'orders-preprod');
   await sleep(300);
   await typeInto(page.locator('#uri'), 'http://nessie-catalog:8181');
-  await sleep(700);
-  // Next → Credentials
-  await hoverClick(page.getByRole('button', { name: 'Next' }), 1300);
-  // Next → Tags
+  await sleep(600);
+  await hoverClick(page.getByRole('button', { name: 'Next' }), 1200);
   await hoverClick(page.getByRole('button', { name: 'Next' }), 800);
   const tagInput = page.getByPlaceholder('Add a tag and press Enter');
   await typeInto(tagInput, 'prod', 110);
@@ -108,42 +141,17 @@ async function run() {
   await sleep(400);
   await typeInto(tagInput, 'demo', 110);
   await page.keyboard.press('Enter');
-  await sleep(1600);
-
-  // ── 3. Table detail — Overview gauges ──
-  await goto('/catalogs/1/namespaces/analytics/tables/events');
-  await sleep(2000);
-
-  // Metadata tab (schema / partitions / properties sub-tabs)
-  await hoverClick(page.getByRole('tab', { name: /Metadata/i }), 1300);
-  await hoverClick(page.getByRole('tab', { name: /Partitions/i }), 1100);
-  await hoverClick(page.getByRole('tab', { name: /Properties/i }), 1100);
-
-  // Snapshots tab (operation icons, newest first)
-  await hoverClick(page.getByRole('tab', { name: /Snapshots/i }), 1800);
-
-  // Storage tab (health card) → scroll down to the partition navigator
-  await hoverClick(page.getByRole('tab', { name: /Storage/i }), 1600);
-  for (let i = 0; i < 4; i++) { await page.mouse.wheel(0, 320); await sleep(450); }
   await sleep(1500);
-  await page.mouse.wheel(0, -1400);
-  await sleep(700);
 
-  // Timeline (snapshots + executions)
-  await hoverClick(page.getByRole('tab', { name: /Timeline/i }), 2000);
-
-  // Lineage (schema-version history)
-  await hoverClick(page.getByRole('tab', { name: /Lineage/i }), 2000);
-
-  // Maintenance (expire / rewrite / rollback actions)
-  await hoverClick(page.getByRole('tab', { name: /Maintenance/i }), 2000);
-
-  // Alerts (threshold rules)
-  await hoverClick(page.getByRole('tab', { name: /Alerts/i }), 2000);
-
-  // ── 4. Pipelines page ──
+  // ── 4. Pipelines — list, then a pipeline's runs ──
   await goto('/pipelines');
-  await sleep(2200);
+  await sleep(1800);
+  // Open the pipeline's runs
+  await hoverClick(page.getByRole('link', { name: /View Runs/i }), 1800);
+  // Expand the latest run to reveal its task flow
+  const firstRun = page.locator('button').filter({ hasText: /SUCCESS|RUNNING|FAILED/i }).first();
+  await hoverClick(firstRun, 2400);
+  await sleep(800);
 
   await page.close();
   await context.close();
