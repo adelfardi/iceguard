@@ -31,11 +31,12 @@ docker compose -f docker-compose.dev.yml up -d
 
 # Services:
 #   REST Catalog:      http://localhost:8181      (Apache reference; Postgres-backed)
-#   Nessie Catalog:    http://localhost:8183      (second REST catalog; Postgres-backed)
+#   Nessie (bridge):   http://localhost:8183      (REST fixture named "nessie"; Postgres-backed)
+#   Nessie (real):     http://localhost:19120     (real Nessie Catalog Server; Iceberg REST at /iceberg)
 #   Polaris:           http://localhost:8182      (OAuth2 + real AWS S3)
 #   MinIO S3:          http://localhost:9000
 #   MinIO Console:     http://localhost:9001      (minioadmin/minioadmin)
-#   PostgreSQL:        localhost:5433             (iceguard/iceguard; DBs: iceguard, polaris, restcat, nessiecat)
+#   PostgreSQL:        localhost:5433             (iceguard/iceguard; DBs: iceguard, polaris, restcat, nessiecat, nessie)
 
 # Run the backend on the host (live reload). Use the default `dev` profile, which points
 # the datasource at localhost:5433 — do NOT pass -Dquarkus.profile=docker (no %docker block
@@ -83,7 +84,11 @@ tables now persist** across the restart. For no expiry, use a long-lived IAM use
 ## Multi-Catalog Architecture
 - Each catalog is registered as a `CatalogConfig` in PostgreSQL
 - The frontend Catalog Switcher (sidebar) allows quick switching between catalogs
-- Catalog type (REST, Nessie, Polaris) is inferred from name/URI
+- Catalog vendor (REST, Nessie, Polaris, Unity, Other) is **persisted** on `CatalogConfig.vendor`
+  (Flyway `V8`, set from the create/update request; legacy rows backfilled from the old name/URI
+  heuristic via `CatalogConfig.inferVendor`). Vendor-specific behaviour — e.g. reconstructing
+  snapshot history from the Nessie commit log (`TableService.isNessie`) — keys off this stored
+  vendor, **not** the name/URI.
 - The backend uses `IcebergCatalogClientFactory` to manage connections per catalog
 
 ## Known Limitations
@@ -98,8 +103,16 @@ tables now persist** across the restart. For no expiry, use a long-lived IAM use
   `POLARIS_AWS_SESSION_TOKEN` (for temporary STS creds), region `us-east-1`. The IceGuard catalog also
   carries the AWS `s3.*` creds so the client FileIO can write. Temporary STS creds expire (~1h) — refresh
   them in the Polaris env and the IceGuard catalog credentials when writes start failing with `403`.
-- Nessie 0.99 Catalog Server has complex S3 credential config — we use a REST Catalog bridge
-  (`apache/iceberg-rest-fixture`, Postgres-backed; see "Catalog persistence" above).
+- Two "Nessie" options in the dev stack:
+  - **`nessie-catalog` bridge** (`:8183`, `apache/iceberg-rest-fixture`, Postgres-backed): a plain
+    REST catalog that only *carries the name* "nessie" — no commit log, so IceGuard's Nessie history
+    view falls back to the single Iceberg snapshot. Kept for the seeded `lakehouse-preprod` etc.
+  - **`nessie` real server** (`ghcr.io/projectnessie/nessie`, `:19120`, Iceberg REST at `/iceberg`):
+    a genuine Nessie Catalog Server with a Git-like commit log, so the history view shows the full
+    reconstructed list. Version store = JDBC (Postgres `nessie` DB, schema auto-created). MinIO via
+    server-side S3FileIO; static keys are a Nessie secret ref — the secret VALUES must be enumerable
+    config, so they're passed as `-D` system properties via `JAVA_OPTS_APPEND` (env-only keys aren't
+    enumerable by SmallRye, so the secret provider wouldn't see them). Register it with `vendor=NESSIE`.
 - Java API executor only *analyses* data files (no real compaction). Real `rewrite_data_files`
   runs via the Spark executor, which requires `spark-sql` on PATH (or `iceguard.spark.sql-path`).
   In `docker-compose.dev.yml` the backend is built from `backend/Dockerfile.spark`, which bundles Spark

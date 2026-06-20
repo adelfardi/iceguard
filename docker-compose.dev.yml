@@ -23,6 +23,8 @@ services:
       QUARKUS_OIDC_ENABLED: "false"
       QUARKUS_HTTP_CORS: "true"
       QUARKUS_HTTP_CORS_ORIGINS: http://localhost:5173,http://localhost:3000
+      # Allow large data-insert request bodies (default is ~10M).
+      QUARKUS_HTTP_LIMITS_MAX_BODY_SIZE: 64M
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
       AWS_REGION: us-east-1
@@ -92,6 +94,46 @@ services:
       CATALOG_URI: jdbc:postgresql://postgres:5432/nessiecat
       CATALOG_JDBC_USER: iceguard
       CATALOG_JDBC_PASSWORD: iceguard
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    networks:
+      - iceguard
+
+  # ─── Catalog 2b: a REAL Apache Nessie Catalog Server ───
+  # Unlike the `nessie-catalog` bridge above (a plain REST fixture that only fakes the name),
+  # this is an actual Nessie server: it serves the Iceberg REST API at :19120/iceberg and keeps
+  # a Git-like commit log, so IceGuard's Nessie history view shows the full reconstructed
+  # history. Version store: JDBC (Postgres `nessie` DB — schema auto-created on first start).
+  # Object store: MinIO via server-side S3FileIO; static keys are passed as a Nessie secret ref
+  # (urn:nessie-secret:quarkus:nessie-s3-creds -> NESSIE_S3_CREDS_NAME / _SECRET).
+  nessie:
+    image: ghcr.io/projectnessie/nessie:0.104.1
+    container_name: iceguard-nessie
+    restart: unless-stopped
+    ports:
+      - "19120:19120"
+    environment:
+      NESSIE_VERSION_STORE_TYPE: JDBC
+      NESSIE_VERSION_STORE_PERSIST_JDBC_DATASOURCE: postgresql
+      QUARKUS_DATASOURCE_POSTGRESQL_DB_KIND: postgresql
+      QUARKUS_DATASOURCE_POSTGRESQL_JDBC_URL: jdbc:postgresql://postgres:5432/nessie
+      QUARKUS_DATASOURCE_POSTGRESQL_USERNAME: iceguard
+      QUARKUS_DATASOURCE_POSTGRESQL_PASSWORD: iceguard
+      NESSIE_CATALOG_DEFAULT_WAREHOUSE: warehouse
+      NESSIE_CATALOG_WAREHOUSES_WAREHOUSE_LOCATION: s3://warehouse/nessie-real/
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_REGION: us-east-1
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_ENDPOINT: http://minio:9000/
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_PATH_STYLE_ACCESS: "true"
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_AUTH_TYPE: STATIC
+      NESSIE_CATALOG_SERVICE_S3_DEFAULT_OPTIONS_ACCESS_KEY: urn:nessie-secret:quarkus:nessie-s3-creds
+      # The secret values must be enumerable config (SmallRye can't enumerate env-only keys, so
+      # the secret provider wouldn't see them) — pass them as -D system properties.
+      JAVA_OPTS_APPEND: >-
+        -Dnessie-s3-creds.name=minioadmin
+        -Dnessie-s3-creds.secret=minioadmin
     depends_on:
       minio-init:
         condition: service_completed_successfully

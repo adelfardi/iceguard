@@ -74,9 +74,11 @@ echo "── Registering in IceGuard backend ──"
 if [ "${SEED_BACKEND_IN_DOCKER:-0}" = "1" ]; then
   REST_URI="http://rest-catalog:8181";  NESSIE_URI="http://nessie-catalog:8181"
   POLARIS_BASE="http://polaris:8181";   S3_ENDPOINT="http://minio:9000"
+  NESSIE_REAL_URI="http://nessie:19120/iceberg"
 else
   REST_URI="http://localhost:8181";     NESSIE_URI="http://localhost:8183"
   POLARIS_BASE="http://localhost:8182"; S3_ENDPOINT="http://localhost:9000"
+  NESSIE_REAL_URI="http://localhost:19120/iceberg"
 fi
 # MinIO S3 creds for the client FileIO (so table loads / file analysis can read S3).
 MINIO_CREDS="\"s3.endpoint\":\"${S3_ENDPOINT}\",\"s3.access-key-id\":\"minioadmin\",\"s3.secret-access-key\":\"minioadmin\",\"s3.path-style-access\":\"true\",\"client.region\":\"us-east-1\""
@@ -88,6 +90,13 @@ curl -s -X POST "${ICEGUARD_API}/api/catalogs" -H "Content-Type: application/jso
 curl -s -X POST "${ICEGUARD_API}/api/catalogs" -H "Content-Type: application/json" \
   -d "{\"name\":\"nessie\",\"uri\":\"${NESSIE_URI}\",\"warehouse\":\"s3://warehouse/nessie/\",\"authType\":\"NONE\",\"credentials\":{${MINIO_CREDS}}}" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  nessie (id={d.get(\"id\",\"?\")})')" 2>/dev/null
+
+# A REAL Nessie Catalog Server (the `nessie` compose service): vendor=NESSIE so IceGuard
+# reconstructs the full snapshot history from the Nessie commit log. warehouse = the Nessie
+# warehouse NAME ("warehouse"); the server writes to MinIO, the client FileIO reads it back.
+curl -s -X POST "${ICEGUARD_API}/api/catalogs" -H "Content-Type: application/json" \
+  -d "{\"name\":\"nessie-real\",\"uri\":\"${NESSIE_REAL_URI}\",\"warehouse\":\"warehouse\",\"vendor\":\"NESSIE\",\"authType\":\"NONE\",\"credentials\":{${MINIO_CREDS}}}" \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  nessie-real (id={d.get(\"id\",\"?\")})')" 2>/dev/null
 
 if [ -n "${POLARIS_TOKEN:-}" ]; then
   # URI = REST base (/api/catalog); warehouse = the Polaris catalog NAME.
