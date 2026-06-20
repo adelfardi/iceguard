@@ -122,7 +122,7 @@
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>sts</artifactId>
-            <version>2.29.51</version>
+            <version>2.46.15</version>
         </dependency>
 
         <!-- Hadoop (required by Iceberg for FileIO) -->
