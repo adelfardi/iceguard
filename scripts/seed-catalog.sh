@@ -24,16 +24,6 @@ curl -s -X POST http://localhost:8181/v1/namespaces/raw/tables -H "Content-Type:
 echo "  analytics: events, user_sessions"
 echo "  raw: clickstream"
 
-# ── 2. Seed Nessie Catalog (8183) ──
-echo ""
-echo "── Catalog 2: Nessie Catalog ──"
-curl -s -X POST http://localhost:8183/v1/namespaces -H "Content-Type: application/json" \
-  -d '{"namespace": ["warehouse"], "properties": {"owner": "data-engineering"}}' > /dev/null 2>&1
-curl -s -X POST http://localhost:8183/v1/namespaces/warehouse/tables -H "Content-Type: application/json" \
-  -d '{"name":"customers","stage-create":false,"schema":{"type":"struct","schema-id":0,"fields":[{"id":1,"name":"customer_id","type":"long","required":true},{"id":2,"name":"email","type":"string","required":true},{"id":3,"name":"name","type":"string","required":true},{"id":4,"name":"created_at","type":"timestamptz","required":true}]},"properties":{"write.format.default":"parquet","format-version":"2"}}' > /dev/null 2>&1
-curl -s -X POST http://localhost:8183/v1/namespaces/warehouse/tables -H "Content-Type: application/json" \
-  -d '{"name":"transactions","stage-create":false,"schema":{"type":"struct","schema-id":0,"fields":[{"id":1,"name":"tx_id","type":"string","required":true},{"id":2,"name":"customer_id","type":"long","required":true},{"id":3,"name":"amount","type":"decimal(12,2)","required":true},{"id":4,"name":"tx_date","type":"timestamptz","required":true}]},"properties":{"write.format.default":"parquet","format-version":"2"}}' > /dev/null 2>&1
-echo "  warehouse: customers, transactions"
 
 # ── 3. Polaris (8182) ──
 echo ""
@@ -72,12 +62,10 @@ echo "── Registering in IceGuard backend ──"
 #   - backend on the host (mvn quarkus:dev) → localhost + published ports   (default)
 #   - backend in Docker (compose `backend`) → docker service names; set SEED_BACKEND_IN_DOCKER=1
 if [ "${SEED_BACKEND_IN_DOCKER:-0}" = "1" ]; then
-  REST_URI="http://rest-catalog:8181";  NESSIE_URI="http://nessie-catalog:8181"
-  POLARIS_BASE="http://polaris:8181";   S3_ENDPOINT="http://minio:9000"
+  REST_URI="http://rest-catalog:8181";  POLARIS_BASE="http://polaris:8181";   S3_ENDPOINT="http://minio:9000"
   NESSIE_REAL_URI="http://nessie:19120/iceberg"
 else
-  REST_URI="http://localhost:8181";     NESSIE_URI="http://localhost:8183"
-  POLARIS_BASE="http://localhost:8182"; S3_ENDPOINT="http://localhost:9000"
+  REST_URI="http://localhost:8181";     POLARIS_BASE="http://localhost:8182"; S3_ENDPOINT="http://localhost:9000"
   NESSIE_REAL_URI="http://localhost:19120/iceberg"
 fi
 # MinIO S3 creds for the client FileIO (so table loads / file analysis can read S3).
@@ -86,10 +74,6 @@ MINIO_CREDS="\"s3.endpoint\":\"${S3_ENDPOINT}\",\"s3.access-key-id\":\"minioadmi
 curl -s -X POST "${ICEGUARD_API}/api/catalogs" -H "Content-Type: application/json" \
   -d "{\"name\":\"rest-catalog\",\"uri\":\"${REST_URI}\",\"warehouse\":\"s3://warehouse/rest/\",\"authType\":\"NONE\",\"credentials\":{${MINIO_CREDS}}}" \
   | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  rest-catalog (id={d.get(\"id\",\"?\")})')" 2>/dev/null
-
-curl -s -X POST "${ICEGUARD_API}/api/catalogs" -H "Content-Type: application/json" \
-  -d "{\"name\":\"nessie\",\"uri\":\"${NESSIE_URI}\",\"warehouse\":\"s3://warehouse/nessie/\",\"authType\":\"NONE\",\"credentials\":{${MINIO_CREDS}}}" \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  nessie (id={d.get(\"id\",\"?\")})')" 2>/dev/null
 
 # A REAL Nessie Catalog Server (the `nessie` compose service): vendor=NESSIE so IceGuard
 # reconstructs the full snapshot history from the Nessie commit log. warehouse = the Nessie

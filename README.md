@@ -6,6 +6,9 @@
 
 **A modern web console to manage, inspect and maintain Apache Iceberg™ tables across multiple catalogs.**
 
+[![CI](https://github.com/adelfardi/iceguard/actions/workflows/ci.yml/badge.svg)](https://github.com/adelfardi/iceguard/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/adelfardi/iceguard?sort=semver)](https://github.com/adelfardi/iceguard/releases/latest)
+[![GHCR images](https://img.shields.io/badge/ghcr.io-images-2496ED.svg?logo=docker&logoColor=white)](https://github.com/adelfardi/iceguard/pkgs/container/iceguard-backend)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Backend](https://img.shields.io/badge/backend-Java%2021%20%C2%B7%20Quarkus-4695EB.svg)](backend)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%C2%B7%20TypeScript%20%C2%B7%20Vite-61DAFB.svg)](frontend)
@@ -122,8 +125,8 @@ Tear down with `docker compose --profile db --profile sandbox down` (add `-v` to
 Run the dependencies in Docker and the app from source:
 
 ```bash
-# deps only (Postgres :5433, REST catalog :8181, MinIO) — not the backend container
-docker compose -f docker-compose.dev.yml up -d postgres rest-catalog nessie-catalog minio minio-init
+# deps only (Postgres :5433, REST catalog :8181, Nessie :19120, MinIO) — not the backend container
+docker compose -f docker-compose.dev.yml up -d postgres rest-catalog nessie minio minio-init
 cd backend && mvn quarkus:dev -Dquarkus.profile=docker   # :8080  (Swagger: /q/swagger-ui)
 cd frontend && npm install && npm run dev                 # :5173  (proxies /api to :8080)
 ```

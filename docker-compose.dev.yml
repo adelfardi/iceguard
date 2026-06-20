@@ -71,40 +71,8 @@ services:
     networks:
       - iceguard
 
-  # ─── Catalog 2: Second REST Catalog (simulates Nessie/staging env) ───
-  # Backed by PostgreSQL (db `nessiecat`) — same persistent setup as rest-catalog.
-  nessie-catalog:
-    build:
-      context: ./docker/iceberg-rest-pg
-    image: iceguard-iceberg-rest-pg
-    container_name: iceguard-nessie-catalog
-    restart: unless-stopped
-    ports:
-      - "8183:8181"
-    environment:
-      AWS_ACCESS_KEY_ID: minioadmin
-      AWS_SECRET_ACCESS_KEY: minioadmin
-      AWS_REGION: us-east-1
-      CATALOG_WAREHOUSE: s3://warehouse/nessie/
-      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
-      CATALOG_S3_ENDPOINT: http://minio:9000
-      CATALOG_S3_PATH__STYLE__ACCESS: "true"
-      # Persistent JDBC catalog backend (PostgreSQL).
-      CATALOG_CATALOG__IMPL: org.apache.iceberg.jdbc.JdbcCatalog
-      CATALOG_URI: jdbc:postgresql://postgres:5432/nessiecat
-      CATALOG_JDBC_USER: iceguard
-      CATALOG_JDBC_PASSWORD: iceguard
-    depends_on:
-      minio-init:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-    networks:
-      - iceguard
-
-  # ─── Catalog 2b: a REAL Apache Nessie Catalog Server ───
-  # Unlike the `nessie-catalog` bridge above (a plain REST fixture that only fakes the name),
-  # this is an actual Nessie server: it serves the Iceberg REST API at :19120/iceberg and keeps
+  # ─── Catalog 2: a REAL Apache Nessie Catalog Server ───
+  # An actual Nessie server: it serves the Iceberg REST API at :19120/iceberg and keeps
   # a Git-like commit log, so IceGuard's Nessie history view shows the full reconstructed
   # history. Version store: JDBC (Postgres `nessie` DB — schema auto-created on first start).
   # Object store: MinIO via server-side S3FileIO; static keys are passed as a Nessie secret ref
@@ -240,7 +208,7 @@ services:
       POSTGRES_PASSWORD: iceguard
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      # Creates the dedicated catalog databases (polaris, restcat, nessiecat) on a fresh volume.
+      # Creates the dedicated catalog databases (polaris, restcat, nessie) on a fresh volume.
       - ./scripts/init-catalog-dbs.sql:/docker-entrypoint-initdb.d/10-catalog-dbs.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U iceguard"]

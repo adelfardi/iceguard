@@ -153,7 +153,7 @@ export function TableDetail() {
   const [detailSnapshot, setDetailSnapshot] = useState<SnapshotInfo | null>(null);
   const [snapshotPage, setSnapshotPage] = useState(0);
 
-  const { data: tableDetail, isLoading } = useQuery({
+  const { data: tableDetail, isLoading, error: tableError } = useQuery({
     queryKey: ['table', catId, namespace, table],
     queryFn: () => tableApi.get(catId, namespace!, table!),
   });
@@ -236,6 +236,23 @@ export function TableDetail() {
           </div>
         </div>
         <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
+  // Query finished but the table couldn't be loaded (catalog unreachable, table dropped,
+  // auth error, …). Without this guard the tabs render with an undefined tableDetail and crash.
+  if (tableError || !tableDetail) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <AlertTriangle className="mb-3 h-10 w-10 text-amber-500" />
+        <h2 className="text-lg font-semibold">Couldn't load this table</h2>
+        <p className="mt-1 max-w-md text-sm text-muted-foreground">
+          <span className="font-mono">{namespace}.{table}</span> could not be loaded
+          {tableError ? `: ${apiErrorMessage(tableError)}` : ''}. The catalog may be unreachable
+          or the table may no longer exist.
+        </p>
+        <Button asChild variant="outline" className="mt-4"><Link to="/catalogs">Back to catalogs</Link></Button>
       </div>
     );
   }

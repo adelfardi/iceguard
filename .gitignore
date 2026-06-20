@@ -5,6 +5,11 @@
 *.pem
 **/credentials
 .aws/
+key
+*.key
+
+# ─── Local agent / assistant config (not for the public repo) ───
+CLAUDE.md
 
 # ─── Java / Maven (backend) ───
 backend/target/
