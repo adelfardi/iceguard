@@ -130,7 +130,9 @@ public class TableDataService {
 
         DataWriter<Record> writer = Parquet.writeData(outputFile)
                 .schema(schema)
-                .createWriterFunc(GenericParquetWriter::buildWriter)
+                // Iceberg 1.11: GenericParquetWriter.buildWriter(MessageType) was replaced by
+                // create(Schema, MessageType) and the class moved to the iceberg-parquet jar.
+                .createWriterFunc(GenericParquetWriter::create)
                 .overwrite()
                 .withSpec(spec)
                 .withPartition(partitionKey)

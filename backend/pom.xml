@@ -17,7 +17,7 @@
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
         <quarkus.platform.version>3.17.8</quarkus.platform.version>
         <surefire-plugin.version>3.5.6</surefire-plugin.version>
-        <iceberg.version>1.7.1</iceberg.version>
+        <iceberg.version>1.10.0</iceberg.version>
     </properties>
 
     <dependencyManagement>
@@ -107,7 +107,7 @@
         <dependency>
             <groupId>org.apache.parquet</groupId>
             <artifactId>parquet-column</artifactId>
-            <version>1.13.1</version>
+            <version>1.16.0</version>
         </dependency>
         <dependency>
             <groupId>org.apache.iceberg</groupId>
@@ -124,12 +124,46 @@
             <artifactId>sts</artifactId>
             <version>2.46.15</version>
         </dependency>
+        <!-- iceberg-aws's AwsClientFactories needs the SDK's Apache HTTP client and KMS
+             modules; AWS SDK 2.46 no longer pulls them transitively, so declare them. -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>apache-client</artifactId>
+            <version>2.46.15</version>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>kms</artifactId>
+            <version>2.46.15</version>
+        </dependency>
 
         <!-- Hadoop (required by Iceberg for FileIO) -->
+        <!-- Parquet >= 1.15 (pulled by Iceberg >= 1.8) references hadoop-mapreduce on its read
+             path; that in turn references javax.xml.bind, removed from the JDK, so add a JAXB shim. -->
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-mapreduce-client-core</artifactId>
+            <version>3.5.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-reload4j</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>ch.qos.reload4j</groupId>
+                    <artifactId>reload4j</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>javax.xml.bind</groupId>
+            <artifactId>jaxb-api</artifactId>
+            <version>2.3.1</version>
+        </dependency>
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-common</artifactId>
-            <version>3.4.1</version>
+            <version>3.5.0</version>
             <exclusions>
                 <exclusion>
                     <groupId>org.slf4j</groupId>
