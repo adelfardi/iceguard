@@ -54,8 +54,8 @@ export function Alerts() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-red-600 text-white">
-          <Bell className="h-6 w-6" />
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-amber-500/20 bg-amber-500/10">
+          <Bell className="h-6 w-6 text-amber-400" />
         </div>
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Alerts</h1>

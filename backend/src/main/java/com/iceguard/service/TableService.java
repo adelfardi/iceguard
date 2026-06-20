@@ -279,9 +279,9 @@ public class TableService {
                 .toList();
     }
 
-    /** Nessie catalogs are detected the same way as the UI: name/URI contains "nessie". */
+    /** Driven by the stored vendor, not re-guessed from the name/URI. */
     private static boolean isNessie(CatalogConfig cfg) {
-        return (cfg.name + " " + cfg.uri).toLowerCase().contains("nessie");
+        return cfg.vendor == CatalogConfig.Vendor.NESSIE;
     }
 
     /** Map the Nessie commit log to the SnapshotResponse shape (newest-first). */
@@ -478,7 +478,9 @@ public class TableService {
             case DOUBLE -> value instanceof Number n ? n.doubleValue() : Double.parseDouble(str);
             case FLOAT -> value instanceof Number n ? n.floatValue() : Float.parseFloat(str);
             case BOOLEAN -> value instanceof Boolean b ? b : Boolean.parseBoolean(str);
-            case DATE -> (int) LocalDate.parse(str).toEpochDay();
+            // Iceberg's generic record model holds a DATE as a LocalDate (it converts to the
+            // epoch-day int at write time); handing it a raw int throws ClassCastException.
+            case DATE -> LocalDate.parse(str);
             case TIMESTAMP -> {
                 if (value instanceof OffsetDateTime odt) {
                     yield odt;

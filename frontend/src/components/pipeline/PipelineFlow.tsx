@@ -1,4 +1,4 @@
-import { Camera, FileStack, HardDrive, Trash2, type LucideIcon } from 'lucide-react';
+import { Camera, FileStack, HardDrive, Trash2, Undo2, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PipelineTaskResponse } from '@/types';
 
@@ -33,6 +33,13 @@ export const ACTION_TYPE_META: Record<
     color: 'text-rose-400',
     bgColor: 'bg-rose-500/10',
     borderColor: 'border-rose-500/30',
+  },
+  ROLLBACK: {
+    label: 'Rollback',
+    icon: Undo2,
+    color: 'text-blue-400',
+    bgColor: 'bg-blue-500/10',
+    borderColor: 'border-blue-500/30',
   },
 };
 
