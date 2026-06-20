@@ -1,6 +1,6 @@
 import type { CreateCatalogRequest } from '@/types';
 
-export type CatalogEngine = 'rest' | 'nessie' | 'polaris' | 'other';
+export type CatalogEngine = 'rest' | 'nessie' | 'polaris' | 'unity' | 'other';
 
 export interface EngineMeta {
   id: CatalogEngine;
@@ -42,6 +42,15 @@ export const CATALOG_ENGINES: EngineMeta[] = [
     defaultAuth: 'OAUTH2',
   },
   {
+    id: 'unity',
+    label: 'Unity Catalog',
+    logo: '/logos/unity-catalog.svg',
+    description: 'Unity Catalog (Databricks / OSS) — Iceberg REST API',
+    uriPlaceholder: 'https://<workspace>/api/2.1/unity-catalog/iceberg-rest',
+    warehousePlaceholder: 'unity_catalog_name',
+    defaultAuth: 'BEARER',
+  },
+  {
     id: 'other',
     label: 'Other / Custom',
     logo: null,
@@ -53,5 +62,5 @@ export const CATALOG_ENGINES: EngineMeta[] = [
 ];
 
 export function engineMeta(id: CatalogEngine): EngineMeta {
-  return CATALOG_ENGINES.find((e) => e.id === id) ?? CATALOG_ENGINES[3];
+  return CATALOG_ENGINES.find((e) => e.id === id) ?? CATALOG_ENGINES[CATALOG_ENGINES.length - 1];
 }

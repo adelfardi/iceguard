@@ -1,4 +1,4 @@
-export type CatalogType = 'rest' | 'nessie' | 'polaris';
+export type CatalogType = 'rest' | 'nessie' | 'polaris' | 'unity';
 
 export interface CatalogConfig {
   id: number;
@@ -16,6 +16,7 @@ export function guessCatalogType(catalog: CatalogConfig): CatalogType {
   const lower = (catalog.name + catalog.uri).toLowerCase();
   if (lower.includes('nessie')) return 'nessie';
   if (lower.includes('polaris')) return 'polaris';
+  if (lower.includes('unity') || lower.includes('unity-catalog') || lower.includes('/unity-catalog/')) return 'unity';
   return 'rest';
 }
 
@@ -23,6 +24,7 @@ export const CATALOG_TYPE_META: Record<CatalogType, { label: string; color: stri
   rest: { label: 'REST Catalog', color: 'text-blue-500', description: 'Apache Iceberg REST Catalog' },
   nessie: { label: 'Nessie', color: 'text-green-500', description: 'Project Nessie (Git-like versioning)' },
   polaris: { label: 'Polaris', color: 'text-purple-500', description: 'Apache Polaris (catalog-as-a-service)' },
+  unity: { label: 'Unity Catalog', color: 'text-orange-500', description: 'Unity Catalog (Databricks / OSS) via Iceberg REST' },
 };
 
 export interface CreateCatalogRequest {

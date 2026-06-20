@@ -74,7 +74,8 @@ export function CatalogForm({ mode, initial, pending, onSubmit, id, hideSubmit }
         <Input id="uri" name="uri" placeholder="http://localhost:8181" defaultValue={initial?.uri} required />
         <p className="text-xs text-muted-foreground">
           REST: http://host:8181 | Nessie: http://host:19120/iceberg |
-          Polaris: http://host:8182/api/catalog/v1/warehouse-name
+          Polaris: http://host:8182/api/catalog/v1/warehouse-name |
+          Unity: https://&lt;workspace&gt;/api/2.1/unity-catalog/iceberg-rest
         </p>
       </div>
       <div className="space-y-2">
@@ -89,7 +90,7 @@ export function CatalogForm({ mode, initial, pending, onSubmit, id, hideSubmit }
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="NONE">None (REST Catalog, Nessie)</SelectItem>
-            <SelectItem value="BEARER">Bearer Token</SelectItem>
+            <SelectItem value="BEARER">Bearer Token (Unity Catalog PAT)</SelectItem>
             <SelectItem value="OAUTH2">OAuth2 (Polaris)</SelectItem>
             <SelectItem value="BASIC">Basic Auth</SelectItem>
           </SelectContent>

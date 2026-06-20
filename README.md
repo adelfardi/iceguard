@@ -53,7 +53,7 @@ IceGuard then **connects to your own** Iceberg catalog(s) and object store.
 
 ## Features
 
-- **Multi-catalog** — register and switch between REST, Nessie and Polaris catalogs (OAuth2/Bearer/Basic supported).
+- **Multi-catalog** — register and switch between REST, Nessie, Polaris and Unity Catalog (OAuth2/Bearer/Basic supported).
 - **Namespaces & tables** — browse the tree, create namespaces, create/drop/rename tables, insert sample rows.
 - **Schema editor** — add / rename / retype / re-doc / drop multiple columns, applied in a **single commit**.
 - **Properties editor** — add / update / remove table properties in a **single commit**.
@@ -67,6 +67,22 @@ IceGuard then **connects to your own** Iceberg catalog(s) and object store.
 - **Pipelines** — chain maintenance actions with per-action parameters and a cron schedule (Airflow-style run view).
 - **Alerts** — threshold rules on table metrics with optional SMTP email notifications.
 - **Timeline** — snapshots + executions on one timeline, click any item for its output/logs.
+
+## Supported catalogs
+
+Any Iceberg REST-compatible catalog works. The **Add Catalog** wizard shows a card per engine, and
+the type is auto-detected from the catalog name/URI:
+
+| | Catalog | Typical URI | Auth |
+|:---:|---|---|---|
+| <img src="frontend/public/logos/iceberg.png" alt="Iceberg REST" height="26"/> | **Iceberg REST** | `http://host:8181` | None / Bearer |
+| <img src="frontend/public/logos/nessie.svg" alt="Nessie" height="26"/> | **Nessie** | `http://host:19120/iceberg` | None |
+| <img src="frontend/public/logos/polaris.png" alt="Apache Polaris" height="26"/> | **Apache Polaris** | `http://host:8182/api/catalog` | OAuth2 |
+| <img src="frontend/public/logos/unity-catalog.svg" alt="Unity Catalog" height="26"/> | **Unity Catalog** | `https://<workspace>/api/2.1/unity-catalog/iceberg-rest` | Bearer (PAT) / OAuth2 |
+
+<sub>Unity Catalog (Databricks or the OSS `unitycatalog.io`) is reached through its Iceberg REST
+Catalog API — browse works today; writes depend on the endpoint (Databricks managed-Iceberg
+read/write is in preview, requires `EXTERNAL USE SCHEMA` + a PAT/OAuth token).</sub>
 
 ## Stack
 

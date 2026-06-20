@@ -48,6 +48,7 @@ export function CreateCatalogWizard({ pending, onSubmit }: {
     setEngine(id);
     setAuthType(engineMeta(id).defaultAuth);
     if (id === 'polaris') setS3Mode('keys');
+    if (id === 'unity') setS3Mode('vended');
   }
 
   function goNext() {
