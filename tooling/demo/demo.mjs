@@ -92,37 +92,55 @@ async function run() {
   // Snapshots (operation icons, newest first)
   await hoverClick(page.getByRole('tab', { name: /Snapshots/i }), 1600);
 
-  // Storage (health) → scroll down to the partition navigator
+  // Storage (health) → scroll to the partition navigator, drill into the first partition, back
   await hoverClick(page.getByRole('tab', { name: /Storage/i }), 1500);
-  for (let i = 0; i < 4; i++) { await page.mouse.wheel(0, 320); await sleep(420); }
-  await sleep(1400);
+  for (let i = 0; i < 4; i++) { await page.mouse.wheel(0, 300); await sleep(650); }
+  await sleep(1300);
+  // open the first partition's file list, dwell on it, then return to the navigator
+  await hoverClick(page.locator('tr.cursor-pointer').first(), 1900);
+  await sleep(2000);
+  await hoverClick(page.getByRole('button', { name: /Back/i }), 1400);
+  await sleep(1000);
   await page.mouse.wheel(0, -1400);
   await sleep(600);
 
-  // Timeline → hover a snapshot item (append/replace) to surface its info tooltip
+  // Timeline → hover an item to surface its tooltip, then click it to open the details popup
   await hoverClick(page.getByRole('tab', { name: /Timeline/i }), 1300);
   try {
-    const item = page.locator('.vis-item').nth(3);
-    const box = await item.boundingBox();
+    // Pick a data-marker dot in the chart area — not a thin connector stem and not the
+    // right-hand filter legend (those are ~40px dots near x≈1016 and would toggle a filter).
+    const items = page.locator('.vis-item');
+    const count = await items.count();
+    let box = null;
+    for (let i = 0; i < count; i++) {
+      const bb = await items.nth(i).boundingBox();
+      if (bb && bb.width >= 10 && bb.width <= 60 && bb.height >= 10 && bb.height <= 60
+          && bb.x > 200 && bb.x < 900 && bb.y > 200 && bb.y < 470) { box = bb; break; }
+    }
     if (box) {
       const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
       await page.mouse.move(cx, cy, { steps: 22 });
       await page.mouse.move(cx + 1, cy, { steps: 2 });   // nudge so vis-timeline shows the tooltip
-      await sleep(2600);                                  // operation · #id · time · +files/records
+      await sleep(2400);                                  // operation · #id · time · +files/records
+      await page.mouse.click(cx, cy);                     // → details popup (snapshot / operation output)
+      await page.getByRole('dialog').waitFor({ state: 'visible' }).catch(() => {});
+      await sleep(2600);                                  // showcase the popup
+      await page.keyboard.press('Escape');
+      await sleep(800);
     }
   } catch { /* ignore */ }
 
-  // Lineage → scroll down through the schema-evolution history
+  // Lineage → scroll all the way down through the schema-evolution history (v0→v3 diffs)
   await hoverClick(page.getByRole('tab', { name: /Lineage/i }), 1300);
-  for (let i = 0; i < 3; i++) { await page.mouse.wheel(0, 300); await sleep(450); }
-  await sleep(1300);
-  await page.mouse.wheel(0, -1100);
+  for (let i = 0; i < 7; i++) { await page.mouse.wheel(0, 340); await sleep(480); }
+  await sleep(1800);                 // dwell at the bottom on the column diffs
+  await page.mouse.wheel(0, -2400);
   await sleep(600);
 
   // Maintenance → open the "Rewrite Data Files" dialog (popup)
   await hoverClick(page.getByRole('tab', { name: /Maintenance/i }), 1400);
-  const rewriteRun = page.locator('div.border-l-4')
-    .filter({ hasText: 'Rewrite Data Files' })
+  const rewriteRun = page.locator('div.group')
+    .filter({ has: page.getByRole('heading', { name: 'Rewrite Data Files' }) })
     .getByRole('button', { name: 'Run' });
   await hoverClick(rewriteRun, 600);
   await page.getByRole('dialog').waitFor({ state: 'visible' }).catch(() => {});

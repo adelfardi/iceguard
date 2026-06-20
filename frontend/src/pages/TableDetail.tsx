@@ -40,6 +40,7 @@ import { OperationOutputDialog } from '@/components/OperationOutputDialog';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { SchemaEvolutionCard, SchemaDiffGraphic } from '@/components/lineage/SchemaEvolutionView';
 import { AlertEventsList } from '@/components/alerts/AlertEventsList';
+import { getActionMeta } from '@/components/pipeline/PipelineFlow';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
@@ -607,7 +608,7 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
     queryKey: ['table-overview-thresholds', catalogId, namespace, table],
     queryFn: () => tableOverviewThresholdApi.get(catalogId, namespace, table),
   });
-  const [commitGranularity, setCommitGranularity] = useState<CommitGranularity>('hour');
+  const [commitGranularity, setCommitGranularity] = useState<CommitGranularity>('minute');
 
   if (!stats) return <Skeleton className="h-96 w-full" />;
 
@@ -1203,6 +1204,168 @@ function DataSampleTab({ catalogId, namespace, table }: { catalogId: number; nam
 
 /* ═══════════════════════ Maintenance Tab ═══════════════════════ */
 
+type MaintenanceRisk = 'destructive' | 'optimization';
+type MaintenanceSectionId = 'optimization' | 'cleanup' | 'recovery';
+
+type MaintenanceActionItem = {
+  id: string;
+  actionType: string;
+  description: string;
+  category: string;
+  risk: MaintenanceRisk;
+  tags?: string[];
+  section: MaintenanceSectionId;
+  dialogOpen: boolean;
+  setOpen: (open: boolean) => void;
+  content: React.ReactNode;
+};
+
+const MAINTENANCE_SECTIONS: { id: MaintenanceSectionId; title: string; description: string; compact?: boolean }[] = [
+  { id: 'optimization', title: 'Optimization', description: 'Improve query performance and metadata efficiency.' },
+  { id: 'cleanup', title: 'Cleanup', description: 'Reclaim storage by removing stale snapshots and unreferenced files.' },
+  { id: 'recovery', title: 'Recovery', description: 'Revert table state when you need to undo recent changes.', compact: true },
+];
+
+function MaintenanceActionDialog({
+  actionType,
+  dialogOpen,
+  setOpen,
+  trigger,
+  content,
+}: {
+  actionType: string;
+  dialogOpen: boolean;
+  setOpen: (open: boolean) => void;
+  trigger: React.ReactNode;
+  content: React.ReactNode;
+}) {
+  const meta = getActionMeta(actionType);
+  const Icon = meta.icon;
+
+  return (
+    <Dialog open={dialogOpen} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <span className={cn('flex h-8 w-8 items-center justify-center rounded-lg border', meta.bgColor, meta.borderColor)}>
+              <Icon className={cn('h-4 w-4', meta.color)} />
+            </span>
+            {meta.label}
+          </DialogTitle>
+        </DialogHeader>
+        {content}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MaintenanceActionCard({
+  actionType,
+  description,
+  category,
+  risk,
+  tags,
+  dialogOpen,
+  setOpen,
+  content,
+}: Omit<MaintenanceActionItem, 'id' | 'section'>) {
+  const meta = getActionMeta(actionType);
+  const Icon = meta.icon;
+
+  return (
+    <Card
+      className={cn(
+        'group glass shadow-card overflow-hidden transition-all duration-200 ease-out',
+        'hover:-translate-y-0.5 hover:shadow-glow hover:bg-card/90',
+        meta.borderColor,
+      )}
+    >
+      <CardContent className="p-0">
+        <div className="p-5">
+          <div className="flex items-start gap-4">
+            <div
+              className={cn(
+                'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-transform duration-200 group-hover:scale-105',
+                meta.bgColor,
+                meta.borderColor,
+              )}
+            >
+              <Icon className={cn('h-5 w-5', meta.color)} />
+            </div>
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <h3 className="font-semibold text-sm leading-none">{meta.label}</h3>
+                {risk === 'destructive' ? (
+                  <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-normal border-rose-500/30 bg-rose-500/5 text-rose-400">
+                    Destructive
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-normal border-emerald-500/30 bg-emerald-500/5 text-emerald-400">
+                    Optimization
+                  </Badge>
+                )}
+                {tags?.map((tag) => (
+                  <Badge key={tag} variant="secondary" className="h-4 px-1.5 text-[10px] font-normal">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+              <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-3 border-t border-border/50 bg-muted/15 px-5 py-3">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{category}</span>
+          <MaintenanceActionDialog
+            actionType={actionType}
+            dialogOpen={dialogOpen}
+            setOpen={setOpen}
+            content={content}
+            trigger={
+              <Button
+                size="sm"
+                variant="outline"
+                className={cn(
+                  'h-8 gap-1.5 border-border/60 bg-background/50 shadow-none transition-all',
+                  'group-hover:border-indigo-500/35 group-hover:bg-indigo-500/[0.06] group-hover:text-indigo-300',
+                )}
+              >
+                Run
+                <ChevronRight className="h-3.5 w-3.5 opacity-60 transition-transform group-hover:translate-x-0.5" />
+              </Button>
+            }
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MaintenanceSection({
+  title,
+  description,
+  children,
+  compact,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+  compact?: boolean;
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+        </div>
+      </div>
+      <div className={cn('grid gap-4', compact ? 'max-w-xl' : 'md:grid-cols-2')}>{children}</div>
+    </section>
+  );
+}
+
 function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; namespace: string; table: string }) {
   const queryClient = useQueryClient();
   const [expireOpen, setExpireOpen] = useState(false);
@@ -1227,31 +1390,18 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
   const rewriteManifestsM = makeMutation((r) => maintenanceApi.rewriteManifests(catalogId, namespace, table, r), 'Rewrite manifests', () => setRewriteManifestsOpen(false));
   const removeOrphansM = makeMutation((r) => maintenanceApi.removeOrphanFiles(catalogId, namespace, table, r), 'Remove orphans', () => setRemoveOrphansOpen(false));
 
-  const actionCard = (title: string, desc: string, icon: React.ReactNode, color: string, dialogOpen: boolean, setOpen: (b: boolean) => void, content: React.ReactNode) => (
-    <Card className={`border-l-4 ${color}`}>
-      <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2">{icon}{title}</CardTitle></CardHeader>
-      <CardContent><p className="text-sm text-muted-foreground mb-3">{desc}</p>
-        <Dialog open={dialogOpen} onOpenChange={setOpen}><DialogTrigger asChild><Button variant="outline" size="sm">{icon}<span className="ml-1">Run</span></Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>{content}</DialogContent></Dialog>
-      </CardContent>
-    </Card>
-  );
-
-  return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {actionCard('Expire Snapshots', 'Remove old snapshots to reclaim storage.', <Camera className="h-4 w-4 text-violet-500" />, 'border-l-violet-500', expireOpen, setExpireOpen,
-        <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const req: MaintenanceRequest = {}; const h = fd.get('h') as string; if (h) req.olderThanMs = Number(h)*3600000; const r = fd.get('r') as string; if (r) req.retainLast = Number(r); expireM.mutate(req); }} className="space-y-4">
-          <div className="space-y-2"><Label>Older than (hours)</Label><Input name="h" type="number" placeholder="168" /></div>
-          <div className="space-y-2"><Label>Retain last N</Label><Input name="r" type="number" placeholder="5" /></div>
-          <Button type="submit" variant="destructive" disabled={expireM.isPending}>{expireM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Expire</Button>
-        </form>
-      )}
-      {actionCard('Rollback', 'Roll back to a specific snapshot.', <Clock3 className="h-4 w-4 text-blue-500" />, 'border-l-blue-500', rollbackOpen, setRollbackOpen,
-        <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); rollbackM.mutate({ snapshotId: (fd.get('sid') as string).trim() }); }} className="space-y-4">
-          <div className="space-y-2"><Label>Snapshot ID</Label><Input name="sid" type="number" required /></div>
-          <Button type="submit" variant="destructive" disabled={rollbackM.isPending}>{rollbackM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Rollback</Button>
-        </form>
-      )}
-      {actionCard('Rewrite Data Files', 'Compact small files for better performance.', <HardDrive className="h-4 w-4 text-emerald-500" />, 'border-l-emerald-500', rewriteDataOpen, setRewriteDataOpen,
+  const actions: MaintenanceActionItem[] = [
+    {
+      id: 'rewrite-data',
+      actionType: 'REWRITE_DATA_FILES',
+      description: 'Compact small data files into larger ones for faster scans and better parallelism.',
+      category: 'Compaction',
+      risk: 'optimization',
+      tags: ['Java · analyse', 'Spark · execute'],
+      section: 'optimization',
+      dialogOpen: rewriteDataOpen,
+      setOpen: setRewriteDataOpen,
+      content: (
         <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const req: MaintenanceRequest = {}; const ts = fd.get('ts') as string; const mi = fd.get('mi') as string; if (ts || mi) { req.parameters = {}; if (ts) req.parameters['target-file-size-bytes'] = String(Number(ts)*1048576); if (mi) req.parameters['min-input-files'] = mi; } if (rewriteEngine === 'spark') { req.engine = 'spark'; if (rewriteCluster !== 'local') req.sparkClusterId = Number(rewriteCluster); } rewriteDataM.mutate(req); }} className="space-y-4">
           <div className="space-y-2"><Label>Engine</Label>
             <Select value={rewriteEngine} onValueChange={(v) => setRewriteEngine(v as 'java' | 'spark')}>
@@ -1278,18 +1428,113 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
           <div className="space-y-2"><Label>Min input files</Label><Input name="mi" type="number" placeholder="5" /></div>
           <Button type="submit" disabled={rewriteDataM.isPending}>{rewriteDataM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{rewriteEngine === 'spark' ? 'Run Spark Compaction' : 'Analyze'}</Button>
         </form>
-      )}
-      {actionCard('Rewrite Manifests', 'Optimize manifest files for faster queries.', <FileStack className="h-4 w-4 text-amber-500" />, 'border-l-amber-500', rewriteManifestsOpen, setRewriteManifestsOpen,
+      ),
+    },
+    {
+      id: 'rewrite-manifests',
+      actionType: 'REWRITE_MANIFESTS',
+      description: 'Rewrite manifest files to reduce metadata overhead and speed up table scans.',
+      category: 'Metadata',
+      risk: 'optimization',
+      section: 'optimization',
+      dialogOpen: rewriteManifestsOpen,
+      setOpen: setRewriteManifestsOpen,
+      content: (
         <div className="space-y-4"><p className="text-sm text-muted-foreground">This will rewrite all manifest files. Continue?</p>
           <Button onClick={() => rewriteManifestsM.mutate({})} disabled={rewriteManifestsM.isPending}>{rewriteManifestsM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Rewrite Manifests</Button>
         </div>
-      )}
-      {actionCard('Remove Orphan Files', 'Delete files no longer referenced by snapshots.', <Trash2 className="h-4 w-4 text-rose-500" />, 'border-l-rose-500', removeOrphansOpen, setRemoveOrphansOpen,
+      ),
+    },
+    {
+      id: 'expire-snapshots',
+      actionType: 'EXPIRE_SNAPSHOTS',
+      description: 'Remove old snapshots based on age or retention count to free metadata and storage.',
+      category: 'Snapshots',
+      risk: 'destructive',
+      section: 'cleanup',
+      dialogOpen: expireOpen,
+      setOpen: setExpireOpen,
+      content: (
+        <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const req: MaintenanceRequest = {}; const h = fd.get('h') as string; if (h) req.olderThanMs = Number(h)*3600000; const r = fd.get('r') as string; if (r) req.retainLast = Number(r); expireM.mutate(req); }} className="space-y-4">
+          <div className="space-y-2"><Label>Older than (hours)</Label><Input name="h" type="number" placeholder="168" /></div>
+          <div className="space-y-2"><Label>Retain last N</Label><Input name="r" type="number" placeholder="5" /></div>
+          <Button type="submit" variant="destructive" disabled={expireM.isPending}>{expireM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Expire</Button>
+        </form>
+      ),
+    },
+    {
+      id: 'remove-orphans',
+      actionType: 'REMOVE_ORPHAN_FILES',
+      description: 'Delete data files no longer referenced by any snapshot, with a safety age threshold.',
+      category: 'Storage',
+      risk: 'destructive',
+      section: 'cleanup',
+      dialogOpen: removeOrphansOpen,
+      setOpen: setRemoveOrphansOpen,
+      content: (
         <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const req: MaintenanceRequest = {}; const h = fd.get('h') as string; if (h) req.olderThanMs = Number(h)*3600000; removeOrphansM.mutate(req); }} className="space-y-4">
           <div className="space-y-2"><Label>Older than (hours)</Label><Input name="h" type="number" placeholder="72" /><p className="text-xs text-muted-foreground">Safety threshold to avoid deleting active files.</p></div>
           <Button type="submit" variant="destructive" disabled={removeOrphansM.isPending}>{removeOrphansM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Remove Orphans</Button>
         </form>
-      )}
+      ),
+    },
+    {
+      id: 'rollback',
+      actionType: 'ROLLBACK',
+      description: 'Roll the table back to a specific snapshot ID. All commits after that point will be lost.',
+      category: 'Time travel',
+      risk: 'destructive',
+      section: 'recovery',
+      dialogOpen: rollbackOpen,
+      setOpen: setRollbackOpen,
+      content: (
+        <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); rollbackM.mutate({ snapshotId: (fd.get('sid') as string).trim() }); }} className="space-y-4">
+          <div className="space-y-2"><Label>Snapshot ID</Label><Input name="sid" type="number" required /></div>
+          <Button type="submit" variant="destructive" disabled={rollbackM.isPending}>{rollbackM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Rollback</Button>
+        </form>
+      ),
+    },
+  ];
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-start gap-4 rounded-xl border border-border/50 bg-muted/10 p-4">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-indigo-500/20 bg-indigo-500/10">
+          <Wrench className="h-5 w-5 text-indigo-400" />
+        </div>
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold tracking-tight">Table Maintenance</h2>
+          <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
+            Run Iceberg procedures to compact files, trim snapshots, and reclaim storage.
+            Destructive actions are irreversible — review parameters before confirming.
+          </p>
+        </div>
+      </div>
+
+      {MAINTENANCE_SECTIONS.map((section) => (
+        <MaintenanceSection
+          key={section.id}
+          title={section.title}
+          description={section.description}
+          compact={section.compact}
+        >
+          {actions
+            .filter((action) => action.section === section.id)
+            .map((action) => (
+              <MaintenanceActionCard
+                key={action.id}
+                actionType={action.actionType}
+                description={action.description}
+                category={action.category}
+                risk={action.risk}
+                tags={action.tags}
+                dialogOpen={action.dialogOpen}
+                setOpen={action.setOpen}
+                content={action.content}
+              />
+            ))}
+        </MaintenanceSection>
+      ))}
     </div>
   );
 }
