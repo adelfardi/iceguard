@@ -17,7 +17,7 @@ COPY src ./src
 RUN mvn -B -ntp -DskipTests package
 
 # ── Stage 2: runtime with bundled Spark ──
-FROM eclipse-temurin:21-jre-jammy
+FROM eclipse-temurin:25-jre-jammy
 
 ARG SPARK_VERSION=3.5.3
 ARG ICEBERG_VERSION=1.7.1
