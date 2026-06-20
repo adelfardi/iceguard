@@ -57,7 +57,7 @@ jobs:
 
       - name: Docker metadata (sha + edge, never latest)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_NAMESPACE }}/${{ matrix.image }}
           flavor: latest=false
