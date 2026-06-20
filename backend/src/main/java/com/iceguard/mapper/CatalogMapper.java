@@ -26,6 +26,9 @@ public class CatalogMapper {
         entity.warehouse = request.warehouse();
         entity.properties = toJson(request.properties());
         entity.authType = request.authType();
+        entity.vendor = request.vendor() != null
+                ? request.vendor()
+                : CatalogConfig.inferVendor(request.name(), request.uri());
         entity.credentials = toJson(request.credentials());
         entity.tags = tagsToJson(request.tags());
         return entity;
@@ -37,6 +40,7 @@ public class CatalogMapper {
         entity.warehouse = request.warehouse();
         if (request.properties() != null) entity.properties = toJson(request.properties());
         if (request.authType() != null) entity.authType = request.authType();
+        if (request.vendor() != null) entity.vendor = request.vendor();
         if (request.credentials() != null) entity.credentials = toJson(request.credentials());
         if (request.tags() != null) entity.tags = tagsToJson(request.tags());
     }
@@ -49,6 +53,7 @@ public class CatalogMapper {
                 entity.warehouse,
                 fromJson(entity.properties),
                 entity.authType,
+                entity.vendor,
                 tagsFromJson(entity.tags),
                 entity.createdAt,
                 entity.updatedAt

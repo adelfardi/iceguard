@@ -59,6 +59,7 @@ export function CatalogForm({ mode, initial, pending, onSubmit, id, hideSubmit }
       uri: fd.get('uri') as string,
       warehouse: (fd.get('warehouse') as string) || undefined,
       authType: (fd.get('authType') as CreateCatalogRequest['authType']) || 'NONE',
+      vendor: (fd.get('vendor') as CreateCatalogRequest['vendor']) || 'REST',
       credentials,
     });
   };
@@ -81,6 +82,24 @@ export function CatalogForm({ mode, initial, pending, onSubmit, id, hideSubmit }
       <div className="space-y-2">
         <Label htmlFor="warehouse">Warehouse</Label>
         <Input id="warehouse" name="warehouse" placeholder="s3://my-bucket/warehouse" defaultValue={initial?.warehouse ?? ''} />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="vendor">Catalog type</Label>
+        <Select name="vendor" defaultValue={initial?.vendor ?? 'REST'}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="REST">Iceberg REST</SelectItem>
+            <SelectItem value="NESSIE">Nessie</SelectItem>
+            <SelectItem value="POLARIS">Polaris</SelectItem>
+            <SelectItem value="UNITY">Unity Catalog</SelectItem>
+            <SelectItem value="OTHER">Other / Custom</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Drives catalog-specific behaviour (e.g. Nessie commit-log history).
+        </p>
       </div>
       <div className="space-y-2">
         <Label htmlFor="authType">Authentication</Label>

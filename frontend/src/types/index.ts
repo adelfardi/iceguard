@@ -1,5 +1,8 @@
 export type CatalogType = 'rest' | 'nessie' | 'polaris' | 'unity';
 
+/** Persisted catalog implementation (backend CatalogConfig.Vendor). */
+export type CatalogVendor = 'REST' | 'NESSIE' | 'POLARIS' | 'UNITY' | 'OTHER';
+
 export interface CatalogConfig {
   id: number;
   name: string;
@@ -7,17 +10,36 @@ export interface CatalogConfig {
   warehouse: string | null;
   properties: Record<string, string>;
   authType: 'NONE' | 'BEARER' | 'OAUTH2' | 'BASIC';
+  vendor: CatalogVendor;
   tags: string[];
   createdAt: string;
   updatedAt: string;
 }
 
 export function guessCatalogType(catalog: CatalogConfig): CatalogType {
+  // Prefer the stored vendor; only fall back to name/URI for legacy rows without one.
+  switch (catalog.vendor) {
+    case 'NESSIE': return 'nessie';
+    case 'POLARIS': return 'polaris';
+    case 'UNITY': return 'unity';
+    case 'REST': return 'rest';
+  }
   const lower = (catalog.name + catalog.uri).toLowerCase();
   if (lower.includes('nessie')) return 'nessie';
   if (lower.includes('polaris')) return 'polaris';
-  if (lower.includes('unity') || lower.includes('unity-catalog') || lower.includes('/unity-catalog/')) return 'unity';
+  if (lower.includes('unity')) return 'unity';
   return 'rest';
+}
+
+/** Map a wizard engine id / catalog type to the persisted backend vendor enum. */
+export function toCatalogVendor(type: CatalogType | 'other'): CatalogVendor {
+  switch (type) {
+    case 'nessie': return 'NESSIE';
+    case 'polaris': return 'POLARIS';
+    case 'unity': return 'UNITY';
+    case 'other': return 'OTHER';
+    default: return 'REST';
+  }
 }
 
 export const CATALOG_TYPE_META: Record<CatalogType, { label: string; color: string; description: string }> = {
@@ -33,6 +55,7 @@ export interface CreateCatalogRequest {
   warehouse?: string;
   properties?: Record<string, string>;
   authType?: 'NONE' | 'BEARER' | 'OAUTH2' | 'BASIC';
+  vendor?: CatalogVendor;
   credentials?: Record<string, string>;
   tags?: string[];
 }

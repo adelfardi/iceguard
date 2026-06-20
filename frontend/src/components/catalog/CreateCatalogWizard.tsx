@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { tagColorStyle } from '@/lib/tagColor';
 import { CATALOG_ENGINES, engineMeta, type CatalogEngine } from '@/lib/catalogEngines';
 import type { CreateCatalogRequest } from '@/types';
+import { toCatalogVendor } from '@/types';
 
 const STEPS = [
   { id: 'engine', label: 'Engine' },
@@ -95,6 +96,7 @@ export function CreateCatalogWizard({ pending, onSubmit }: {
       uri: uri.trim(),
       warehouse: warehouse.trim() || undefined,
       authType,
+      vendor: toCatalogVendor(engine),
       credentials,
       tags,
     };

@@ -27,6 +27,12 @@ public class CatalogConfig extends PanacheEntity {
     @Enumerated(EnumType.STRING)
     public AuthType authType = AuthType.NONE;
 
+    /** Catalog implementation. Persisted so behaviour (e.g. Nessie commit-log history)
+     *  is driven by this, not re-guessed from the name/URI on every request. */
+    @Column(length = 50)
+    @Enumerated(EnumType.STRING)
+    public Vendor vendor = Vendor.REST;
+
     @Column(columnDefinition = "text")
     public String credentials = "{}";
 
@@ -53,5 +59,19 @@ public class CatalogConfig extends PanacheEntity {
 
     public enum AuthType {
         NONE, BEARER, OAUTH2, BASIC
+    }
+
+    public enum Vendor {
+        REST, NESSIE, POLARIS, UNITY, OTHER
+    }
+
+    /** Best-effort fallback when a caller doesn't specify the vendor (and for backfilling
+     *  legacy rows): mirror the old name/URI heuristic. */
+    public static Vendor inferVendor(String name, String uri) {
+        String s = ((name == null ? "" : name) + " " + (uri == null ? "" : uri)).toLowerCase();
+        if (s.contains("nessie")) return Vendor.NESSIE;
+        if (s.contains("polaris")) return Vendor.POLARIS;
+        if (s.contains("unity")) return Vendor.UNITY;
+        return Vendor.REST;
     }
 }
