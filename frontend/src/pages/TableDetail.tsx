@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { tableApi, maintenanceApi, alertApi, executionApi, sparkClusterApi, storageHealthApi, apiErrorMessage } from '@/api/client';
+import { tableApi, maintenanceApi, alertApi, executionApi, sparkClusterApi, storageHealthApi, tableOverviewThresholdApi, apiErrorMessage } from '@/api/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -475,26 +475,47 @@ export function TableDetail() {
 
 /* ═══════════════════════ Overview Tab ═══════════════════════ */
 
-/* Edit a single Overview gauge threshold (data files / snapshots). Persisted in the
-   shared storage-health-thresholds record, like the Health card thresholds. */
-function OverviewThresholdsDialog({ thresholds, field, title }: {
-  thresholds?: import('@/types').StorageHealthThresholds;
+/* Edit a single Overview gauge threshold (data files / snapshots) for THIS table. Persisted
+   as a per-table override; toggling "Use global default" clears it so the gauge falls back to
+   the shared storage-health-thresholds default. */
+function OverviewThresholdsDialog({ thresholds, field, title, catalogId, namespace, table }: {
+  thresholds?: import('@/types').TableOverviewThresholds;
   field: 'dataFilesThreshold' | 'snapshotCountThreshold';
   title: string;
+  catalogId: number;
+  namespace: string;
+  table: string;
 }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const [useGlobal, setUseGlobal] = useState(false);
   const [value, setValue] = useState<number>(DEFAULT_HEALTH_THRESHOLDS[field]);
 
+  const overrideField = field === 'dataFilesThreshold' ? 'dataFilesThresholdOverride' : 'snapshotCountThresholdOverride';
+  const globalField = field === 'dataFilesThreshold' ? 'globalDataFilesThreshold' : 'globalSnapshotCountThreshold';
+  const otherOverrideField = field === 'dataFilesThreshold' ? 'snapshotCountThresholdOverride' : 'dataFilesThresholdOverride';
+  const override = thresholds?.[overrideField] ?? null;
+  const globalValue = thresholds?.[globalField] ?? DEFAULT_HEALTH_THRESHOLDS[field];
+
   React.useEffect(() => {
-    if (open) setValue(thresholds?.[field] ?? DEFAULT_HEALTH_THRESHOLDS[field]);
-  }, [open, thresholds, field]);
+    if (open) {
+      setUseGlobal(override == null);
+      setValue(override ?? globalValue);
+    }
+  }, [open, override, globalValue]);
 
   const saveMutation = useMutation({
-    mutationFn: () => storageHealthApi.save({ ...(thresholds ?? DEFAULT_HEALTH_THRESHOLDS), [field]: value }),
+    mutationFn: () => {
+      const fieldValue = useGlobal ? null : value;
+      const otherValue = thresholds?.[otherOverrideField] ?? null;
+      return tableOverviewThresholdApi.save(catalogId, namespace, table, {
+        dataFilesThreshold: field === 'dataFilesThreshold' ? fieldValue : (field === 'snapshotCountThreshold' ? otherValue : null),
+        snapshotCountThreshold: field === 'snapshotCountThreshold' ? fieldValue : (field === 'dataFilesThreshold' ? otherValue : null),
+      });
+    },
     onSuccess: () => {
       toast.success('Threshold updated');
-      queryClient.invalidateQueries({ queryKey: ['storage-health-thresholds'] });
+      queryClient.invalidateQueries({ queryKey: ['table-overview-thresholds', catalogId, namespace, table] });
       setOpen(false);
     },
     onError: (err) => toast.error(`Failed: ${apiErrorMessage(err)}`),
@@ -510,16 +531,28 @@ function OverviewThresholdsDialog({ thresholds, field, title }: {
       <DialogContent className="max-w-xs">
         <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); saveMutation.mutate(); }} className="space-y-4 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <Label htmlFor="ov-use-global">Use global default</Label>
+              <p className="text-xs text-muted-foreground">Global default: {globalValue}</p>
+            </div>
+            <Switch id="ov-use-global" checked={useGlobal} onCheckedChange={setUseGlobal} />
+          </div>
           <div className="space-y-1.5">
-            <Label htmlFor="ov-threshold">Threshold</Label>
+            <Label htmlFor="ov-threshold">Threshold for this table</Label>
             <Input
               id="ov-threshold"
               type="number"
               min={1}
               value={value}
+              disabled={useGlobal}
               onChange={(e) => { const n = Number(e.target.value); setValue(Number.isFinite(n) ? n : 0); }}
             />
-            <p className="text-xs text-muted-foreground">The gauge turns red once the count exceeds this value.</p>
+            <p className="text-xs text-muted-foreground">
+              {useGlobal
+                ? 'This table follows the global default.'
+                : 'Applies only to this table. The gauge turns red once the count exceeds this value.'}
+            </p>
           </div>
           <Button type="submit" className="w-full" disabled={saveMutation.isPending}>
             {saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -571,8 +604,8 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
     queryFn: () => executionApi.search({ catalogId, namespace, table, size: 6, page: 0 }),
   });
   const { data: thresholds } = useQuery({
-    queryKey: ['storage-health-thresholds'],
-    queryFn: storageHealthApi.get,
+    queryKey: ['table-overview-thresholds', catalogId, namespace, table],
+    queryFn: () => tableOverviewThresholdApi.get(catalogId, namespace, table),
   });
   const [commitGranularity, setCommitGranularity] = useState<CommitGranularity>('hour');
 
@@ -636,8 +669,13 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
         {/* Snapshots Gauge */}
         <Card>
           <CardHeader className="pb-0 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="flex items-center gap-2 text-sm"><Camera className="h-4 w-4 text-violet-500" /> Snapshots vs Threshold</CardTitle>
-            <OverviewThresholdsDialog thresholds={thresholds} field="snapshotCountThreshold" title="Snapshot threshold" />
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Camera className="h-4 w-4 text-violet-500" /> Snapshots vs Threshold
+              {thresholds?.snapshotCountThresholdOverride != null && (
+                <Badge variant="secondary" className="h-4 px-1 text-[10px] font-normal">custom</Badge>
+              )}
+            </CardTitle>
+            <OverviewThresholdsDialog thresholds={thresholds} field="snapshotCountThreshold" title="Snapshot threshold" catalogId={catalogId} namespace={namespace} table={table} />
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
@@ -656,8 +694,13 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
         {/* Data Files Gauge */}
         <Card>
           <CardHeader className="pb-0 flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="flex items-center gap-2 text-sm"><HardDrive className="h-4 w-4 text-emerald-500" /> Data Files vs Threshold</CardTitle>
-            <OverviewThresholdsDialog thresholds={thresholds} field="dataFilesThreshold" title="Data files threshold" />
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <HardDrive className="h-4 w-4 text-emerald-500" /> Data Files vs Threshold
+              {thresholds?.dataFilesThresholdOverride != null && (
+                <Badge variant="secondary" className="h-4 px-1 text-[10px] font-normal">custom</Badge>
+              )}
+            </CardTitle>
+            <OverviewThresholdsDialog thresholds={thresholds} field="dataFilesThreshold" title="Data files threshold" catalogId={catalogId} namespace={namespace} table={table} />
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>

@@ -467,6 +467,23 @@ export interface StorageHealthThresholds {
 
 export type SaveStorageHealthThresholdsRequest = Omit<StorageHealthThresholds, 'updatedAt'>;
 
+/** Effective Overview gauge thresholds for one table, with the per-table override (null =
+ *  inherited) and the global default it falls back to. */
+export interface TableOverviewThresholds {
+  dataFilesThreshold: number;
+  snapshotCountThreshold: number;
+  dataFilesThresholdOverride: number | null;
+  snapshotCountThresholdOverride: number | null;
+  globalDataFilesThreshold: number;
+  globalSnapshotCountThreshold: number;
+}
+
+/** A null field clears that override, reverting the gauge to the global default. */
+export interface SaveTableOverviewThresholdsRequest {
+  dataFilesThreshold: number | null;
+  snapshotCountThreshold: number | null;
+}
+
 // ── Alert types ──
 
 export interface AlertRuleResponse {

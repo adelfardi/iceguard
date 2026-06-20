@@ -19,6 +19,8 @@ import type {
   RenameTableRequest,
   SaveSmtpConfigRequest,
   SaveStorageHealthThresholdsRequest,
+  SaveTableOverviewThresholdsRequest,
+  TableOverviewThresholds,
   SchemaUpdateRequest,
   PartitionSpecUpdateRequest,
   SparkClusterConfig,
@@ -279,6 +281,17 @@ export const storageHealthApi = {
     api.get<StorageHealthThresholds>('/settings/storage-health-thresholds').then((r) => r.data),
   save: (data: SaveStorageHealthThresholdsRequest) =>
     api.put<StorageHealthThresholds>('/settings/storage-health-thresholds', data).then((r) => r.data),
+};
+
+export const tableOverviewThresholdApi = {
+  get: (catalogId: number, namespace: string, table: string) =>
+    api
+      .get<TableOverviewThresholds>(`/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/overview-thresholds`)
+      .then((r) => r.data),
+  save: (catalogId: number, namespace: string, table: string, data: SaveTableOverviewThresholdsRequest) =>
+    api
+      .put<TableOverviewThresholds>(`/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/overview-thresholds`, data)
+      .then((r) => r.data),
 };
 
 export const alertApi = {
