@@ -16,7 +16,7 @@
 
 <br/>
 
-<img src="docs/demo.gif" alt="IceGuard demo — browse catalogs, add a catalog, inspect a table" width="90%" />
+<img src="https://github.com/adelfardi/iceguard/releases/download/v0.1.0/demo.gif" alt="IceGuard demo — browse catalogs, add a catalog, inspect a table" width="90%" />
 
 <sub>Browse tagged catalogs → add a catalog with the guided wizard → inspect a table's metadata, snapshots and storage. <a href="docs/demo.mp4">▶ MP4 version</a></sub>
 
