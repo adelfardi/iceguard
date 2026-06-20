@@ -1,46 +1,79 @@
 version: 2
+# Tuned for a solo, pre-1.0 project: monthly, grouped (one PR per ecosystem for
+# minor+patch), major bumps left for manual/deliberate upgrades (they tend to
+# break — Iceberg, JDK, Quarkus…). Security updates still come through regardless.
 updates:
   # ─── Frontend (npm) ───
   - package-ecosystem: npm
     directory: /frontend
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
+      interval: monthly
+    open-pull-requests-limit: 5
     labels: ["dependencies", "frontend"]
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      frontend:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
 
   # ─── Backend (Maven) ───
   - package-ecosystem: maven
     directory: /backend
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 10
+      interval: monthly
+    open-pull-requests-limit: 5
     labels: ["dependencies", "backend"]
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      backend:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
 
-  # ─── GitHub Actions ───
+  # ─── GitHub Actions (majors here are routine version tags, keep them, grouped) ───
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
     labels: ["dependencies", "ci"]
     commit-message:
       prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]
 
-  # ─── Docker images (backend & frontend Dockerfiles) ───
+  # ─── Docker base images (minor+patch grouped; major base bumps done manually) ───
   - package-ecosystem: docker
     directory: /backend
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
     labels: ["dependencies", "docker"]
     commit-message:
       prefix: "chore(docker)"
+    groups:
+      backend-docker:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
   - package-ecosystem: docker
     directory: /frontend
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 5
     labels: ["dependencies", "docker"]
     commit-message:
       prefix: "chore(docker)"
+    groups:
+      frontend-docker:
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
