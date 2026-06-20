@@ -6,6 +6,7 @@ import jakarta.ws.rs.ext.Provider;
 import org.jboss.logging.Logger;
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 
 @Provider
 public class GlobalExceptionHandler implements ExceptionMapper<Exception> {
@@ -24,12 +25,12 @@ public class GlobalExceptionHandler implements ExceptionMapper<Exception> {
             return buildResponse(Response.Status.BAD_REQUEST, exception.getMessage());
         }
 
-        Throwable root = exception;
-        while (root.getCause() != null && root.getCause() != root) root = root.getCause();
-        LOG.error("Unhandled exception (root: " + root.getClass().getName() + ")", exception);
-        String msg = exception.getClass().getSimpleName() + ": " + exception.getMessage()
-                + " | Root cause: " + root.getClass().getSimpleName() + ": " + root.getMessage();
-        return buildResponse(Response.Status.INTERNAL_SERVER_ERROR, msg);
+        // Don't leak internal details (exception/class names, root-cause messages) to the
+        // client. Log the full stack server-side under a correlation id and return only that id.
+        String errorId = UUID.randomUUID().toString();
+        LOG.error("Unhandled exception [errorId=" + errorId + "]", exception);
+        return buildResponse(Response.Status.INTERNAL_SERVER_ERROR,
+                "An internal error occurred. Reference: " + errorId);
     }
 
     private Response buildResponse(Response.Status status, String message) {
