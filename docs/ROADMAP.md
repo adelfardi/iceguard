@@ -41,13 +41,15 @@ P2 = polish). Draft for discussion — priorities not final.
 - [ ] **P2** Keep README/CONTRIBUTING in sync as features land.
 
 ## 4. Security
-- [ ] **P0** **Dependabot** (`.github/dependabot.yml`) for npm, maven, github-actions, docker.
-- [ ] **P0** **CodeQL** workflow (Java + JavaScript/TS) on push/PR + schedule.
+- [x] **P0** **Dependabot** (`.github/dependabot.yml`) for npm, maven, github-actions, docker — *done (grouped, monthly)*.
+- [x] **P0** **CodeQL** workflow (Java + JavaScript/TS) on push/PR + schedule — *done*.
 - [ ] **P0** Enable GitHub **secret scanning + push protection** (repo setting).
 - [ ] **P0** Pin third-party GitHub Actions to commit SHAs (supply-chain).
-- [ ] **P1** **Trivy** image scan in the release/snapshot workflows (fail on HIGH/CRITICAL).
+- [x] **P1** **Trivy** image scan in the release/snapshot workflows — *done (advisory; flip to fail on HIGH/CRITICAL later)*.
 - [ ] **P1** `npm audit` / OWASP dependency check step (advisory → enforced).
-- [ ] **P1** Review app security: input validation coverage (hibernate-validator), CORS origins, error messages not leaking internals, auth story (OIDC/Keycloak path).
+- [ ] **P1** **Encrypt catalog credentials at rest** — currently plaintext JSON in `catalog_config`. See [#49](https://github.com/adelfardi/iceguard/issues/49).
+- [ ] **P1** **API authentication (OIDC)** — disabled by default; wire Quarkus OIDC + role-protected endpoints. See [#50](https://github.com/adelfardi/iceguard/issues/50).
+- [ ] **P1** Review app security: input validation (hibernate-validator), CORS origins, error messages not leaking internals.
 - [ ] **P2** Generate and attach an **SBOM** on release (e.g. Syft/CycloneDX).
 - [ ] **P2** Run containers as non-root + add Docker `HEALTHCHECK` to images.
 
