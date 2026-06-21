@@ -48,6 +48,9 @@ services:
       # validate — these are the app defaults, so no override here. The target DB
       # must be empty on first run (Flyway owns the schema).
       QUARKUS_OIDC_ENABLED: "false"
+      # The UI is served by nginx on :8090, so the browser's Origin is http://localhost:8090.
+      # The image's baked default only allows the Vite dev origin (:5173); override it here.
+      QUARKUS_HTTP_CORS_ORIGINS: ${ICEGUARD_CORS_ORIGINS:-http://localhost:8090}
       # Only used with the sandbox profile (MinIO); harmless otherwise.
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
