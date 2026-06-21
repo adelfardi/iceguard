@@ -209,7 +209,6 @@ export function CreateCatalogWizard({ pending, onSubmit }: {
                   <SelectItem value="NONE">None (REST Catalog, Nessie)</SelectItem>
                   <SelectItem value="BEARER">Bearer Token</SelectItem>
                   <SelectItem value="OAUTH2">OAuth2 (Polaris)</SelectItem>
-                  <SelectItem value="BASIC">Basic Auth</SelectItem>
                 </SelectContent>
               </Select>
             </div>

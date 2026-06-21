@@ -56,7 +56,7 @@ IceGuard then **connects to your own** Iceberg catalog(s) and object store.
 
 ## Features
 
-- **Multi-catalog** — register and switch between REST, Nessie, Polaris and Unity Catalog (OAuth2/Bearer/Basic supported).
+- **Multi-catalog** — register and switch between REST, Nessie, Polaris and Unity Catalog (None/Bearer/OAuth2 supported).
 - **Namespaces & tables** — browse the tree, create namespaces, create/drop/rename tables, insert sample rows.
 - **Schema editor** — add / rename / retype / re-doc / drop multiple columns, applied in a **single commit**.
 - **Properties editor** — add / update / remove table properties in a **single commit**.
@@ -147,7 +147,7 @@ The **REST Catalog** and **Nessie** demo catalogs work out of the box on MinIO.
 
 Deploy the **frontend** and **backend**, point the backend at a **PostgreSQL** you provide
 (`QUARKUS_DATASOURCE_JDBC_URL` / username / password), then add your own catalog(s) from the UI
-(**Catalogs → Add Catalog**): REST / Nessie / Polaris URI, warehouse, auth (OAuth2 / Bearer / Basic)
+(**Catalogs → Add Catalog**): REST / Nessie / Polaris URI, warehouse, auth (None / Bearer / OAuth2)
 and, if needed, S3 credentials. No MinIO/Spark/sandbox containers required.
 
 ## Architecture

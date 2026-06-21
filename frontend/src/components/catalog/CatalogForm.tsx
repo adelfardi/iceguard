@@ -111,7 +111,6 @@ export function CatalogForm({ mode, initial, pending, onSubmit, id, hideSubmit }
             <SelectItem value="NONE">None (REST Catalog, Nessie)</SelectItem>
             <SelectItem value="BEARER">Bearer Token (Unity Catalog PAT)</SelectItem>
             <SelectItem value="OAUTH2">OAuth2 (Polaris)</SelectItem>
-            <SelectItem value="BASIC">Basic Auth</SelectItem>
           </SelectContent>
         </Select>
       </div>

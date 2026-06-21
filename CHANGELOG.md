@@ -25,7 +25,7 @@ Initial release — an open-source web console for Apache Iceberg™ tables.
 
 ### Added
 - **Multi-catalog** support: REST, Nessie, Polaris and **Unity Catalog** (auth: None / Bearer /
-  OAuth2 / Basic). The catalog **vendor is persisted** and drives vendor-specific behaviour such
+  OAuth2). The catalog **vendor is persisted** and drives vendor-specific behaviour such
   as Nessie commit-log history.
 - **Browse**: namespaces & tables tree; create namespaces; create / drop / rename tables; insert
   sample rows; data preview.
