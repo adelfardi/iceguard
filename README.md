@@ -116,8 +116,27 @@ The app is two services — **frontend** + **backend** — plus a required **Pos
 > ```
 > Defaults to `:latest`; pin a release with `TAG=0.1.0 docker compose -f docker-compose.images.yml …`.
 
-For the quickest tour, use **Level 3** and open **http://localhost:8090**, then
-**Catalogs → Add Catalog** with URI `http://rest-catalog:8181`.
+For the quickest tour, use **Level 3** and open **http://localhost:8090**.
+
+#### Add your first catalog (sandbox)
+
+In the UI, go to **Catalogs → Add Catalog** and register the bundled Iceberg REST catalog:
+
+| Field | Value |
+|---|---|
+| Catalog type | **Iceberg REST** |
+| URI | `http://rest-catalog:8181` *(Docker service name — not `localhost`; the backend reaches it over the Compose network)* |
+| Warehouse | `s3://warehouse/rest/` |
+| Authentication | **None** |
+| S3 / Storage access | **Static keys** |
+| &nbsp;&nbsp;• Endpoint | `http://minio:9000` |
+| &nbsp;&nbsp;• Access key / Secret key | `minioadmin` / `minioadmin` |
+| &nbsp;&nbsp;• Region | `us-east-1` |
+| &nbsp;&nbsp;• Path-style access | enabled ✅ |
+
+The S3 settings let the backend read/write data files on the sandbox MinIO. Once added, create a
+namespace and a table to see browsing, schema, storage and maintenance in action.
+
 Tear down with `docker compose --profile db --profile sandbox down` (add `-v` to wipe data)
 — use `-f docker-compose.images.yml` in the same command if you started from the images file.
 
