@@ -191,6 +191,9 @@ CLAUDE.md                detailed architecture notes & known limitations
 Contributions, issues and ideas are welcome! Please read **[CONTRIBUTING.md](CONTRIBUTING.md)** and our
 **[Code of Conduct](CODE_OF_CONDUCT.md)**. Good first issues are labelled `good first issue`.
 
+How the pipelines and automation work (CI, releases, Dependabot, CodeQL, Trivy) is documented in
+**[docs/CI.md](docs/CI.md)**.
+
 ## License
 
 [Apache License 2.0](LICENSE).
