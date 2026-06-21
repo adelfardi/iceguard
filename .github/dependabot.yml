@@ -34,6 +34,10 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: [version-update:semver-major]
+      # Iceberg (and the Parquet it pins) are upgraded manually together — newer
+      # Iceberg/Parquet drag in ORC + hadoop-mapreduce + JAXB. See the 1.10 upgrade.
+      - dependency-name: "org.apache.iceberg:*"
+      - dependency-name: "org.apache.parquet:*"
 
   # ─── GitHub Actions (majors here are routine version tags, keep them, grouped) ───
   - package-ecosystem: github-actions
