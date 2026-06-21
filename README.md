@@ -109,9 +109,17 @@ The app is two services — **frontend** + **backend** — plus a required **Pos
 | 2 — + database | `docker compose --profile db up -d --build` | + Postgres | Self-contained app + its required DB |
 | 3 — + test sandbox | `docker compose --profile db --profile sandbox up -d --build` | + MinIO + REST catalog | Try everything locally |
 
+> **No local build?** Use the **published images** from GHCR instead — same levels, just point at
+> the images file (no `--build`):
+> ```bash
+> docker compose -f docker-compose.images.yml --profile db --profile sandbox up -d
+> ```
+> Defaults to `:latest`; pin a release with `TAG=0.1.0 docker compose -f docker-compose.images.yml …`.
+
 For the quickest tour, use **Level 3** and open **http://localhost:8090**, then
 **Catalogs → Add Catalog** with URI `http://rest-catalog:8181`.
-Tear down with `docker compose --profile db --profile sandbox down` (add `-v` to wipe data).
+Tear down with `docker compose --profile db --profile sandbox down` (add `-v` to wipe data)
+— use `-f docker-compose.images.yml` in the same command if you started from the images file.
 
 | Service | URL | Notes |
 |---------|-----|-------|

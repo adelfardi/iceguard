@@ -1,0 +1,123 @@
+# IceGuard from PUBLISHED images — no local build required.
+#
+# Pulls ghcr.io/<owner>/iceguard-{frontend,backend} (default tag: latest) instead of
+# building from source. Same three tiers as docker-compose.yml via profiles:
+#
+#   Level 1 — app only:     docker compose -f docker-compose.images.yml up -d
+#       frontend + backend; point the backend at YOUR Postgres via .env (ICEGUARD_DB_URL).
+#   Level 2 — + database:   docker compose -f docker-compose.images.yml --profile db up -d
+#   Level 3 — + sandbox:    docker compose -f docker-compose.images.yml --profile db --profile sandbox up -d
+#
+#   UI: http://localhost:8090   ·   API/Swagger: http://localhost:8080/q/swagger-ui
+#
+# Pin a version or a different registry/owner with env vars:
+#   TAG=0.1.0 ICEGUARD_IMAGE_NS=ghcr.io/adelfardi docker compose -f docker-compose.images.yml up -d
+#
+# Tear down (add -v to wipe data):
+#   docker compose -f docker-compose.images.yml --profile db --profile sandbox down
+
+name: iceguard
+
+services:
+  frontend:
+    image: ${ICEGUARD_IMAGE_NS:-ghcr.io/adelfardi}/iceguard-frontend:${TAG:-latest}
+    pull_policy: always
+    environment:
+      BACKEND_URL: http://backend:8080
+    ports:
+      - "8090:80"
+    depends_on:
+      - backend
+    networks: [iceguard]
+
+  backend:
+    image: ${ICEGUARD_IMAGE_NS:-ghcr.io/adelfardi}/iceguard-backend:${TAG:-latest}
+    pull_policy: always
+    environment:
+      QUARKUS_DATASOURCE_DB_KIND: postgresql
+      QUARKUS_DATASOURCE_USERNAME: ${ICEGUARD_DB_USER:-iceguard}
+      QUARKUS_DATASOURCE_PASSWORD: ${ICEGUARD_DB_PASSWORD:-iceguard}
+      QUARKUS_DATASOURCE_JDBC_URL: ${ICEGUARD_DB_URL:-jdbc:postgresql://postgres:5432/iceguard}
+      QUARKUS_OIDC_ENABLED: "false"
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    networks: [iceguard]
+
+  # ── Level 2: Postgres (IceGuard's required dependency) ──
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["db"]
+    environment:
+      POSTGRES_DB: iceguard
+      POSTGRES_USER: ${ICEGUARD_DB_USER:-iceguard}
+      POSTGRES_PASSWORD: ${ICEGUARD_DB_PASSWORD:-iceguard}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ICEGUARD_DB_USER:-iceguard}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [iceguard]
+
+  # ── Level 3: test sandbox — MinIO + a working Iceberg REST catalog ──
+  minio:
+    image: minio/minio:latest
+    profiles: ["sandbox"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks: [iceguard]
+
+  minio-init:
+    image: minio/mc:latest
+    profiles: ["sandbox"]
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+        sleep 3;
+        mc alias set local http://minio:9000 minioadmin minioadmin;
+        mc mb --ignore-existing local/warehouse;
+        echo 'Bucket warehouse created';
+      "
+    networks: [iceguard]
+
+  rest-catalog:
+    image: apache/iceberg-rest-fixture:latest
+    profiles: ["sandbox"]
+    ports:
+      - "8181:8181"
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+      CATALOG_WAREHOUSE: s3://warehouse/rest/
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://minio:9000
+      CATALOG_S3_PATH__STYLE__ACCESS: "true"
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    networks: [iceguard]
+
+volumes:
+  postgres-data:
+  minio-data:
+
+networks:
+  iceguard:
