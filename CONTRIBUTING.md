@@ -10,7 +10,7 @@ By participating, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md
 - **Report bugs** — open an issue with steps to reproduce, expected vs actual behaviour, logs.
 - **Suggest features** — open a feature request describing the use case.
 - **Pick a `good first issue`** — great entry points for new contributors.
-- **Improve docs** — README, `CLAUDE.md`, code comments.
+- **Improve docs** — README, code comments.
 - **Send a PR** — fixes, features, tests.
 
 ## Dev setup
@@ -24,7 +24,7 @@ cd frontend && npm install && npm run dev               # UI on :5173
 ./scripts/seed-catalog.sh                               # demo catalogs/tables
 ```
 
-See [`CLAUDE.md`](CLAUDE.md) for architecture details and known limitations.
+See the README for architecture details and known limitations.
 
 ## Before opening a PR
 
@@ -41,7 +41,7 @@ cd frontend && npx tsc --noEmit && npm run lint
 - Add tests when you fix a bug or add behaviour (backend: JUnit/RestAssured; frontend: type-safe components).
 - Keep changes focused; one logical change per PR.
 - Match the surrounding code style (no project-wide reformatting in a feature PR).
-- Update docs (`README.md` / `CLAUDE.md`) when you change behaviour or config.
+- Update docs (`README.md`) when you change behaviour or config.
 - **Never commit secrets.** Use `.env` (git-ignored); credentials must not appear in code, compose files or history.
 
 ## Commit & PR conventions

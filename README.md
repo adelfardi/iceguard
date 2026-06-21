@@ -141,7 +141,7 @@ docker compose -f docker-compose.dev.yml up -d
 ```
 
 The **REST Catalog** and **Nessie** demo catalogs work out of the box on MinIO.
-**Polaris writes require real AWS S3** — copy `.env.example` to `.env`; see [`CLAUDE.md`](CLAUDE.md).
+**Polaris writes require real AWS S3** — copy `.env.example` to `.env`.
 
 ### Using IceGuard for real
 
@@ -176,7 +176,6 @@ frontend/                React + TypeScript SPA
 scripts/                 seed + helper scripts
 docker-compose.yml       app stack (frontend + backend; profiles: db / sandbox)
 docker-compose.dev.yml   advanced multi-catalog sandbox (Nessie, Polaris, Spark)
-CLAUDE.md                detailed architecture notes & known limitations
 ```
 
 ## Known limitations

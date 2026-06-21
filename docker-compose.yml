@@ -14,7 +14,7 @@
 #   UI:   http://localhost:8090        API/Swagger: http://localhost:8080/q/swagger-ui
 #
 # Backend here is the SLIM image (no Spark). For the full multi-catalog sandbox
-# (Nessie, Polaris, real Spark), use docker-compose.dev.yml (see CLAUDE.md).
+# (Nessie, Polaris, real Spark), use docker-compose.dev.yml.
 
 name: iceguard
 

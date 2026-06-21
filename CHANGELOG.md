@@ -17,7 +17,7 @@ All notable changes to this project are documented here. The format is based on
 
 ### Security
 - Added `SECURITY.md` (private vulnerability reporting + operational notes).
-- Stopped tracking `CLAUDE.md`; removed a stray `key` token file and ignored `key`/`*.key`.
+- Removed a stray `key` token file and ignored `key`/`*.key`.
 
 ## [0.1.0] - 2026-06-20
 

@@ -13,7 +13,7 @@ Closes #
 - [ ] Backend builds: `cd backend && mvn -q -DskipTests package`
 - [ ] Frontend type-checks: `cd frontend && npx tsc --noEmit` (and `npm run lint`)
 - [ ] Added/updated tests where relevant
-- [ ] Updated docs (`README.md` / `CLAUDE.md`) if behaviour or config changed
+- [ ] Updated docs (`README.md`) if behaviour or config changed
 - [ ] No secrets/credentials committed
 
 ## Screenshots (UI changes)

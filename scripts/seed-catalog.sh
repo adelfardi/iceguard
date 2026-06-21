@@ -33,7 +33,7 @@ POLARIS_TOKEN=$(curl -s -X POST http://localhost:8182/api/catalog/v1/oauth/token
   -d "grant_type=client_credentials&client_id=polaris-root&client_secret=polaris-secret&scope=PRINCIPAL_ROLE:ALL" \
   | python3 -c "import sys,json; print(json.load(sys.stdin).get('access_token',''))" 2>/dev/null)
 
-# Polaris uses real AWS S3 (MinIO does not work for Polaris writes — see CLAUDE.md).
+# Polaris uses real AWS S3 (MinIO does not work for Polaris writes).
 # Configure the bucket/region; creds come from the Polaris container env (POLARIS_AWS_*).
 POLARIS_S3_LOCATION="${POLARIS_S3_LOCATION:-s3://polaris-iceguard/warehouse}"
 POLARIS_S3_REGION="${POLARIS_S3_REGION:-us-east-1}"
