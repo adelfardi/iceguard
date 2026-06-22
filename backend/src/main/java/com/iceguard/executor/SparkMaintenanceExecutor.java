@@ -49,11 +49,11 @@ public class SparkMaintenanceExecutor implements MaintenanceExecutor {
     // Empty => assume the jars are already on Spark's classpath (e.g. baked into the image),
     // so no --packages download is attempted at runtime. Optional so an empty override is valid.
     @ConfigProperty(name = "iceguard.spark.iceberg-runtime",
-            defaultValue = "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.7.1")
+            defaultValue = "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.10.0")
     java.util.Optional<String> icebergRuntime;
 
     @ConfigProperty(name = "iceguard.spark.aws-bundle",
-            defaultValue = "org.apache.iceberg:iceberg-aws-bundle:1.7.1")
+            defaultValue = "org.apache.iceberg:iceberg-aws-bundle:1.10.0")
     java.util.Optional<String> awsBundle;
 
     @ConfigProperty(name = "iceguard.spark.extra-packages")

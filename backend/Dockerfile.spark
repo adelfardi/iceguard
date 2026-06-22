@@ -19,8 +19,8 @@ RUN mvn -B -ntp -DskipTests package
 # ── Stage 2: runtime with bundled Spark ──
 FROM eclipse-temurin:25-jre-jammy
 
-ARG SPARK_VERSION=3.5.3
-ARG ICEBERG_VERSION=1.7.1
+ARG SPARK_VERSION=3.5.8
+ARG ICEBERG_VERSION=1.10.0
 
 # Java 17 (for Spark) + runtime tools Spark scripts need (ps, etc.)
 RUN apt-get update && \
@@ -28,8 +28,9 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Apache Spark
-RUN curl -fSL "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.tgz" \
-        -o /tmp/spark.tgz && \
+# Prefer the fast CDN (dlcdn, current releases only); fall back to the archive for older ones.
+RUN (curl -fSL "https://dlcdn.apache.org/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.tgz" -o /tmp/spark.tgz || \
+     curl -fSL "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.tgz" -o /tmp/spark.tgz) && \
     tar -xzf /tmp/spark.tgz -C /opt && \
     ln -s "/opt/spark-${SPARK_VERSION}-bin-hadoop3" /opt/spark && \
     rm /tmp/spark.tgz
