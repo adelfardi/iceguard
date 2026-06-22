@@ -16,9 +16,9 @@
 
 <br/>
 
-<img src="https://github.com/adelfardi/iceguard/releases/download/v0.1.0/demo.gif" alt="IceGuard demo — browse catalogs, add a catalog, inspect a table" width="90%" />
+<img src="https://github.com/adelfardi/iceguard/releases/download/v0.2.0/demo.gif" alt="IceGuard demo — browse catalogs, inspect a table, run Spark maintenance" width="90%" />
 
-<sub>Browse tagged catalogs → add a catalog with the guided wizard → inspect a table's metadata, snapshots and storage. <a href="docs/demo.mp4">▶ MP4 version</a></sub>
+<sub>Browse tagged catalogs → inspect a table's metadata, snapshots, storage & timeline → run a Spark maintenance action and watch its result + logs. <a href="https://github.com/adelfardi/iceguard/releases/download/v0.2.0/demo.mp4">▶ MP4 version</a></sub>
 
 </div>
 
