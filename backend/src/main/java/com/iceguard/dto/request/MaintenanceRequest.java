@@ -7,7 +7,10 @@ public record MaintenanceRequest(
         Integer retainLast,
         Long snapshotId,
         Map<String, String> parameters,
-        /** Execution engine: "java" (default, analyse only) or "spark". */
+        /**
+         * Execution engine: "java" (default; Iceberg Java API — metadata ops plus real
+         * small-table compaction / orphan-removal within hard size limits) or "spark".
+         */
         String engine,
         /** Spark cluster id to run on; null with engine="spark" means local Spark (local[*]). */
         Long sparkClusterId

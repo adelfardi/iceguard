@@ -207,7 +207,9 @@ docker-compose.dev.yml   advanced multi-catalog sandbox (Nessie, Polaris, Spark)
 
 ## Known limitations
 
-- The **Java** rewrite-data-files executor is analyse-only; real compaction needs the **Spark** executor.
+- The **Java** executor really runs compaction & orphan-removal, but only on **small, append-only**
+  tables (hard size/file-count limits; refuses above them) — use the **Spark** executor for large or
+  merge-on-read tables.
 - **Polaris + MinIO**: browsing works, but writes fail (Polaris ignores the S3-compatible endpoint) — use real AWS S3.
 - Catalog credentials are stored in PostgreSQL (not encrypted at rest) — treat the DB as sensitive.
 - Test coverage is early-stage. Contributions very welcome 🙂
