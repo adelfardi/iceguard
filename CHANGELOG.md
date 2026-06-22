@@ -6,17 +6,36 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-22
+
+### Added
+- **Real maintenance via the Iceberg Java API**: actual data-file compaction and orphan-file
+  removal on small, append-only tables (hard size/file-count limits; refuses above them, pointing
+  to Spark).
+- **Delete-file maintenance** (Spark): `rewrite_position_delete_files` and
+  `rewrite_equality_delete_files` actions for merge-on-read tables.
+- **Local Spark tuning** in Settings — driver/executor memory, cores, instances and free-form
+  confs, applied to `local[*]` maintenance runs (registered clusters keep their own config).
+- Maintenance UI: in-dialog **result + logs** panel, and a **last-run** date on each action card.
+- `docker-compose.images.yml` to run the published images without a local build, and `docs/CI.md`
+  documenting the pipelines and security bots.
+
 ### Changed
+- Upgrade **Apache Iceberg 1.7.1 → 1.10.0** (backend); the bundled Spark image moves to
+  **Spark 3.5.8 + Iceberg 1.10.0** (fetched from the dlcdn CDN).
 - Removed the fake "Nessie" REST-fixture bridge from the dev stack; the dev sandbox now ships a
   single, **real** Nessie Catalog Server.
-- README: replaced static badges with dynamic **CI status**, **release** and **GHCR** badges.
+- Split the oversized `TableService` / `TableDetail`; tuned **Dependabot** (grouped, monthly).
+- README: dynamic **CI**, **release** and **GHCR** badges; documented the no-build images stack.
 
 ### Fixed
-- Table detail page no longer crashes when a table fails to load (catalog unreachable, table
-  dropped, auth error) — it shows a graceful error state instead.
+- Table detail page no longer crashes when a table fails to load — it shows a graceful error state.
+- **CORS**: allow the nginx UI origin (`:8090`) in the Docker stacks, so catalog create/edit from
+  the browser is no longer rejected.
 
 ### Security
-- Added `SECURITY.md` (private vulnerability reporting + operational notes).
+- Added `SECURITY.md`, **CodeQL** and **Trivy** image scanning, and protected the `main` branch.
+- Stopped leaking internal exception details to clients (opaque error reference IDs).
 - Removed a stray `key` token file and ignored `key`/`*.key`.
 
 ## [0.1.0] - 2026-06-20
