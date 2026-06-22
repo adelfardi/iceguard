@@ -25,6 +25,8 @@ import type {
   PartitionSpecUpdateRequest,
   SparkClusterConfig,
   SparkClusterRequest,
+  SparkSettings,
+  SaveSparkSettingsRequest,
   SmtpConfigResponse,
   StorageHealthThresholds,
   SnapshotInfo,
@@ -74,6 +76,12 @@ export const sparkClusterApi = {
   update: (id: number, data: SparkClusterRequest) =>
     api.put<SparkClusterConfig>(`/spark-clusters/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/spark-clusters/${id}`),
+};
+
+export const sparkSettingsApi = {
+  get: () => api.get<SparkSettings>('/spark-settings').then((r) => r.data),
+  save: (data: SaveSparkSettingsRequest) =>
+    api.put<SparkSettings>('/spark-settings', data).then((r) => r.data),
 };
 
 export const namespaceApi = {

@@ -313,6 +313,22 @@ export interface SparkClusterRequest {
   properties?: Record<string, string>;
 }
 
+export interface SparkSettings {
+  driverMemory: string | null;
+  executorMemory: string | null;
+  executorCores: number | null;
+  executorInstances: number | null;
+  extraConf: Record<string, string>;
+}
+
+export interface SaveSparkSettingsRequest {
+  driverMemory?: string | null;
+  executorMemory?: string | null;
+  executorCores?: number | null;
+  executorInstances?: number | null;
+  extraConf?: Record<string, string>;
+}
+
 export interface PagedResponse<T> {
   items: T[];
   total: number;

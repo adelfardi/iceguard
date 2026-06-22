@@ -41,6 +41,9 @@ public class MaintenanceService {
     SparkClusterService sparkClusterService;
 
     @Inject
+    SparkSettingsService sparkSettingsService;
+
+    @Inject
     IcebergCatalogClientFactory catalogFactory;
 
     @Inject
@@ -219,6 +222,12 @@ public class MaintenanceService {
             SparkClusterConfig cluster = sparkClusterService.findOrThrow(sparkClusterId);
             master = cluster.masterUrl;
             for (var e : parseJson(cluster.properties).entrySet()) {
+                opts.put(SparkMaintenanceExecutor.OPT_CONF_PREFIX + e.getKey(), e.getValue());
+            }
+        } else {
+            // Local Spark (local[*]) uses the global "Local Spark Tuning" settings; registered
+            // clusters carry their own configuration instead.
+            for (var e : sparkSettingsService.resolveConfs().entrySet()) {
                 opts.put(SparkMaintenanceExecutor.OPT_CONF_PREFIX + e.getKey(), e.getValue());
             }
         }

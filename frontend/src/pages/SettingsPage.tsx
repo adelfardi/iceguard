@@ -10,7 +10,7 @@ import { Loader2, Mail, Send, Zap, Plus, Trash2, Pencil, Sun, Moon, Shield, Info
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
-import { smtpApi, sparkClusterApi, apiErrorMessage } from '@/api/client';
+import { smtpApi, sparkClusterApi, sparkSettingsApi, apiErrorMessage } from '@/api/client';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog';
@@ -19,7 +19,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Textarea } from '@/components/ui/textarea';
-import type { SaveSmtpConfigRequest, SparkClusterConfig, SparkClusterRequest } from '@/types';
+import type { SaveSmtpConfigRequest, SparkClusterConfig, SparkClusterRequest, SaveSparkSettingsRequest } from '@/types';
 import { useThemeStore, type Theme } from '@/hooks/useThemeStore';
 import { cn } from '@/lib/utils';
 
@@ -57,7 +57,8 @@ export function SettingsPage() {
           <ApplicationInfoCard />
         </TabsContent>
 
-        <TabsContent value="spark" className="mt-4">
+        <TabsContent value="spark" className="mt-4 space-y-6">
+          <SparkTuningCard />
           <SparkClustersCard />
         </TabsContent>
 
@@ -194,6 +195,90 @@ function AppearanceCard() {
             </button>
           ))}
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SparkTuningCard() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ['spark-settings'], queryFn: sparkSettingsApi.get });
+
+  const [form, setForm] = useState({
+    driverMemory: '', executorMemory: '', executorCores: '', executorInstances: '', extraConf: '',
+  });
+
+  useEffect(() => {
+    if (data) {
+      setForm({
+        driverMemory: data.driverMemory ?? '',
+        executorMemory: data.executorMemory ?? '',
+        executorCores: data.executorCores != null ? String(data.executorCores) : '',
+        executorInstances: data.executorInstances != null ? String(data.executorInstances) : '',
+        extraConf: data.extraConf && Object.keys(data.extraConf).length ? JSON.stringify(data.extraConf, null, 2) : '',
+      });
+    }
+  }, [data]);
+
+  const saveMutation = useMutation({
+    mutationFn: (req: SaveSparkSettingsRequest) => sparkSettingsApi.save(req),
+    onSuccess: () => { toast.success('Spark tuning saved'); queryClient.invalidateQueries({ queryKey: ['spark-settings'] }); },
+    onError: (err: Error) => toast.error(`Failed to save Spark tuning: ${apiErrorMessage(err)}`),
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    let extraConf: Record<string, string> = {};
+    if (form.extraConf.trim()) {
+      try {
+        extraConf = JSON.parse(form.extraConf);
+      } catch {
+        toast.error('Extra confs must be valid JSON');
+        return;
+      }
+    }
+    saveMutation.mutate({
+      driverMemory: form.driverMemory.trim() || null,
+      executorMemory: form.executorMemory.trim() || null,
+      executorCores: form.executorCores ? Number(form.executorCores) : null,
+      executorInstances: form.executorInstances ? Number(form.executorInstances) : null,
+      extraConf,
+    });
+  };
+
+  const set = (key: keyof typeof form, value: string) => setForm((f) => ({ ...f, [key]: value }));
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <SlidersHorizontal className="h-5 w-5 text-amber-400" /> Local Spark Tuning
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Tunes the built-in <strong>local Spark</strong> engine (<code>master = local[*]</code>) used by
+              maintenance actions when no cluster is selected. Registered clusters use their own configuration
+              (see <em>Spark Clusters</em> below). Applied as <code>--conf</code>; leave a field blank to keep Spark's default.
+            </p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2"><Label htmlFor="drv-mem">Driver memory</Label><Input id="drv-mem" placeholder="1g" value={form.driverMemory} onChange={(e) => set('driverMemory', e.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="exe-mem">Executor memory</Label><Input id="exe-mem" placeholder="2g" value={form.executorMemory} onChange={(e) => set('executorMemory', e.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="exe-cores">Executor cores</Label><Input id="exe-cores" type="number" placeholder="2" value={form.executorCores} onChange={(e) => set('executorCores', e.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="exe-inst">Executor instances</Label><Input id="exe-inst" type="number" placeholder="2" value={form.executorInstances} onChange={(e) => set('executorInstances', e.target.value)} /></div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="extra-conf">Extra Spark confs (JSON)</Label>
+              <Textarea id="extra-conf" rows={4} className="font-mono text-xs" placeholder={'{\n  "spark.sql.shuffle.partitions": "200"\n}'} value={form.extraConf} onChange={(e) => set('extraConf', e.target.value)} />
+              <p className="text-xs text-muted-foreground">Any additional <code>spark.*</code> keys, applied as <code>--conf</code>.</p>
+            </div>
+            <Button type="submit" disabled={saveMutation.isPending}>{saveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save</Button>
+          </form>
+        )}
       </CardContent>
     </Card>
   );
