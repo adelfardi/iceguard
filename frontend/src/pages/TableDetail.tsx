@@ -34,7 +34,7 @@ import {
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
-import type { MaintenanceRequest, SnapshotInfo, AlertRuleResponse } from '@/types';
+import type { MaintenanceRequest, SnapshotInfo, AlertRuleResponse, ExecutionInfo } from '@/types';
 import { AlertRuleForm } from './Alerts';
 import { TimelineTab } from './table-detail/TimelineTab';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -1245,26 +1245,82 @@ const MAINTENANCE_SECTIONS: { id: MaintenanceSectionId; title: string; descripti
   { id: 'recovery', title: 'Recovery', description: 'Revert table state when you need to undo recent changes.', compact: true },
 ];
 
+type ActionMutation = { isPending: boolean; data?: unknown; error: unknown; reset: () => void };
+
+/** Shows the run state of a maintenance action: a spinner while running, then the result + logs. */
+function MaintenanceResultPanel({ mutation }: { mutation?: ActionMutation }) {
+  if (!mutation) return null;
+  if (mutation.isPending) {
+    return (
+      <div className="mt-4 flex items-center gap-2 rounded-md border border-border/50 bg-muted/20 p-3 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" /> Running… the result and logs will appear here when it finishes.
+      </div>
+    );
+  }
+  if (mutation.error) {
+    return (
+      <div className="mt-4 rounded-md border border-rose-500/30 bg-rose-500/5 p-3 text-sm">
+        <div className="font-medium text-rose-400">Request failed</div>
+        <p className="mt-1 text-muted-foreground">{apiErrorMessage(mutation.error as Error)}</p>
+      </div>
+    );
+  }
+  const ex = mutation.data as ExecutionInfo | undefined;
+  if (!ex) return null;
+  const failed = ex.status === 'FAILED';
+  const result = (ex.result ?? {}) as Record<string, unknown>;
+  const output = typeof result.output === 'string' ? result.output : null;
+  const details = Object.entries(result).filter(([k]) => k !== 'output');
+  return (
+    <div className={cn('mt-4 space-y-3 rounded-md border p-3 text-sm', failed ? 'border-rose-500/30 bg-rose-500/5' : 'border-emerald-500/30 bg-emerald-500/5')}>
+      <div className="flex items-center gap-2">
+        {failed ? <X className="h-4 w-4 text-rose-400" /> : <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
+        <span className={cn('font-medium', failed ? 'text-rose-400' : 'text-emerald-400')}>{failed ? 'Failed' : 'Success'}</span>
+        <span className="text-xs text-muted-foreground">{formatExecDuration(ex.startedAt, ex.finishedAt)}</span>
+      </div>
+      {failed && ex.errorMessage && <p className="text-muted-foreground">{ex.errorMessage}</p>}
+      {details.length > 0 && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+          {details.map(([k, v]) => (
+            <div key={k} className="flex justify-between gap-2">
+              <span className="text-muted-foreground">{k}</span>
+              <span className="truncate font-mono">{String(v)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {output && (
+        <div>
+          <div className="mb-1 text-xs font-medium text-muted-foreground">Logs</div>
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded bg-background/60 p-2 font-mono text-[11px] leading-relaxed">{output}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MaintenanceActionDialog({
   actionType,
   dialogOpen,
   setOpen,
   trigger,
   content,
+  mutation,
 }: {
   actionType: string;
   dialogOpen: boolean;
   setOpen: (open: boolean) => void;
   trigger: React.ReactNode;
   content: React.ReactNode;
+  mutation?: ActionMutation;
 }) {
   const meta = getActionMeta(actionType);
   const Icon = meta.icon;
 
   return (
-    <Dialog open={dialogOpen} onOpenChange={setOpen}>
+    <Dialog open={dialogOpen} onOpenChange={(o) => { if (o) mutation?.reset(); setOpen(o); }}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span className={cn('flex h-8 w-8 items-center justify-center rounded-lg border', meta.bgColor, meta.borderColor)}>
@@ -1274,6 +1330,7 @@ function MaintenanceActionDialog({
           </DialogTitle>
         </DialogHeader>
         {content}
+        <MaintenanceResultPanel mutation={mutation} />
       </DialogContent>
     </Dialog>
   );
@@ -1288,7 +1345,9 @@ function MaintenanceActionCard({
   dialogOpen,
   setOpen,
   content,
-}: Omit<MaintenanceActionItem, 'id' | 'section'>) {
+  lastRun,
+  mutation,
+}: Omit<MaintenanceActionItem, 'id' | 'section'> & { lastRun?: string | null; mutation?: ActionMutation }) {
   const meta = getActionMeta(actionType);
   const Icon = meta.icon;
 
@@ -1335,12 +1394,18 @@ function MaintenanceActionCard({
           </div>
         </div>
         <div className="flex items-center justify-between gap-3 border-t border-border/50 bg-muted/15 px-5 py-3">
-          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{category}</span>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{category}</span>
+            <span className="text-[11px] text-muted-foreground/70">
+              Last run: {lastRun ? formatExecTime(lastRun) : 'never'}
+            </span>
+          </div>
           <MaintenanceActionDialog
             actionType={actionType}
             dialogOpen={dialogOpen}
             setOpen={setOpen}
             content={content}
+            mutation={mutation}
             trigger={
               <Button
                 size="sm"
@@ -1401,19 +1466,52 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
 
   const { data: sparkClusters } = useQuery({ queryKey: ['spark-clusters'], queryFn: sparkClusterApi.list });
 
-  const invalidateAll = () => { queryClient.invalidateQueries({ queryKey: ['snapshots', catalogId, namespace, table] }); queryClient.invalidateQueries({ queryKey: ['table-stats', catalogId, namespace, table] }); queryClient.invalidateQueries({ queryKey: ['table', catalogId, namespace, table] }); };
+  // Last execution date per action type (for the "Last run" line on each action card).
+  const { data: actionHistory } = useQuery({
+    queryKey: ['table-action-last-runs', catalogId, namespace, table],
+    queryFn: () => executionApi.search({ catalogId, namespace, table, size: 200, page: 0 }),
+  });
+  const lastRunByAction: Record<string, string> = {};
+  for (const e of actionHistory?.items ?? []) {
+    if (e.startedAt && (!lastRunByAction[e.actionType] || new Date(e.startedAt) > new Date(lastRunByAction[e.actionType]))) {
+      lastRunByAction[e.actionType] = e.startedAt;
+    }
+  }
 
-  const makeMutation = (fn: (r: MaintenanceRequest) => Promise<unknown>, label: string, close: () => void) =>
+  const invalidateAll = () => { queryClient.invalidateQueries({ queryKey: ['snapshots', catalogId, namespace, table] }); queryClient.invalidateQueries({ queryKey: ['table-stats', catalogId, namespace, table] }); queryClient.invalidateQueries({ queryKey: ['table', catalogId, namespace, table] }); queryClient.invalidateQueries({ queryKey: ['table-action-last-runs', catalogId, namespace, table] }); };
+
+  // Keep the dialog open after running so the result + logs can be shown in-place; the toast
+  // reflects the real outcome (the API returns 200 even when the maintenance result is FAILED).
+  const makeMutation = (fn: (r: MaintenanceRequest) => Promise<unknown>, label: string) =>
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    useMutation({ mutationFn: fn, onSuccess: () => { toast.success(`${label}: success`); invalidateAll(); close(); }, onError: (err: Error) => toast.error(`${label}: ${apiErrorMessage(err)}`) });
+    useMutation({
+      mutationFn: fn,
+      onSuccess: (data) => {
+        const ex = data as ExecutionInfo | undefined;
+        if (ex && ex.status === 'FAILED') toast.error(`${label}: ${ex.errorMessage ?? 'failed'}`);
+        else toast.success(`${label}: success`);
+        invalidateAll();
+      },
+      onError: (err: Error) => toast.error(`${label}: ${apiErrorMessage(err)}`),
+    });
 
-  const expireM = makeMutation((r) => maintenanceApi.expireSnapshots(catalogId, namespace, table, r), 'Expire', () => setExpireOpen(false));
-  const rollbackM = makeMutation((r) => maintenanceApi.rollback(catalogId, namespace, table, r), 'Rollback', () => setRollbackOpen(false));
-  const rewriteDataM = makeMutation((r) => maintenanceApi.rewriteDataFiles(catalogId, namespace, table, r), 'Rewrite data', () => setRewriteDataOpen(false));
-  const rewriteManifestsM = makeMutation((r) => maintenanceApi.rewriteManifests(catalogId, namespace, table, r), 'Rewrite manifests', () => setRewriteManifestsOpen(false));
-  const removeOrphansM = makeMutation((r) => maintenanceApi.removeOrphanFiles(catalogId, namespace, table, r), 'Remove orphans', () => setRemoveOrphansOpen(false));
-  const rewritePosM = makeMutation((r) => maintenanceApi.rewritePositionDeleteFiles(catalogId, namespace, table, r), 'Rewrite position deletes', () => setRewritePosOpen(false));
-  const rewriteEqM = makeMutation((r) => maintenanceApi.rewriteEqualityDeleteFiles(catalogId, namespace, table, r), 'Rewrite equality deletes', () => setRewriteEqOpen(false));
+  const expireM = makeMutation((r) => maintenanceApi.expireSnapshots(catalogId, namespace, table, r), 'Expire');
+  const rollbackM = makeMutation((r) => maintenanceApi.rollback(catalogId, namespace, table, r), 'Rollback');
+  const rewriteDataM = makeMutation((r) => maintenanceApi.rewriteDataFiles(catalogId, namespace, table, r), 'Rewrite data');
+  const rewriteManifestsM = makeMutation((r) => maintenanceApi.rewriteManifests(catalogId, namespace, table, r), 'Rewrite manifests');
+  const removeOrphansM = makeMutation((r) => maintenanceApi.removeOrphanFiles(catalogId, namespace, table, r), 'Remove orphans');
+  const rewritePosM = makeMutation((r) => maintenanceApi.rewritePositionDeleteFiles(catalogId, namespace, table, r), 'Rewrite position deletes');
+  const rewriteEqM = makeMutation((r) => maintenanceApi.rewriteEqualityDeleteFiles(catalogId, namespace, table, r), 'Rewrite equality deletes');
+
+  const mutationByAction: Record<string, ActionMutation> = {
+    REWRITE_DATA_FILES: rewriteDataM,
+    REWRITE_POSITION_DELETE_FILES: rewritePosM,
+    REWRITE_EQUALITY_DELETE_FILES: rewriteEqM,
+    REWRITE_MANIFESTS: rewriteManifestsM,
+    EXPIRE_SNAPSHOTS: expireM,
+    REMOVE_ORPHAN_FILES: removeOrphansM,
+    ROLLBACK: rollbackM,
+  };
 
   const actions: MaintenanceActionItem[] = [
     {
@@ -1514,7 +1612,7 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
       dialogOpen: rewritePosOpen,
       setOpen: setRewritePosOpen,
       content: (
-        <form onSubmit={(e) => { e.preventDefault(); const req: MaintenanceRequest = { engine: 'spark' }; if (posCluster !== 'local') req.sparkClusterId = Number(posCluster); rewritePosM.mutate(req); }} className="space-y-4">
+        <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const req: MaintenanceRequest = { engine: 'spark' }; if (posCluster !== 'local') req.sparkClusterId = Number(posCluster); const p: Record<string, string> = {}; const ts = fd.get('ts') as string; if (ts) p['target-file-size-bytes'] = String(Number(ts) * 1048576); if (fd.get('all') === 'on') p['rewrite-all'] = 'true'; if (Object.keys(p).length) req.parameters = p; rewritePosM.mutate(req); }} className="space-y-4">
           <p className="text-sm text-muted-foreground">Rewriting delete files needs a compute engine, so this action runs on Spark.</p>
           <div className="space-y-2"><Label>Spark target</Label>
             <Select value={posCluster} onValueChange={setPosCluster}>
@@ -1526,6 +1624,8 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
             </Select>
             <p className="text-xs text-muted-foreground">Configure clusters in Settings · Spark must be installed for execution.</p>
           </div>
+          <div className="space-y-2"><Label>Target file size (MB)</Label><Input name="ts" type="number" placeholder="512" /></div>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="all" className="h-4 w-4 accent-indigo-500" /> Rewrite all position-delete files (ignore size thresholds)</label>
           <Button type="submit" disabled={rewritePosM.isPending}>{rewritePosM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Run Spark Rewrite</Button>
         </form>
       ),
@@ -1541,7 +1641,7 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
       dialogOpen: rewriteEqOpen,
       setOpen: setRewriteEqOpen,
       content: (
-        <form onSubmit={(e) => { e.preventDefault(); const req: MaintenanceRequest = { engine: 'spark' }; if (eqCluster !== 'local') req.sparkClusterId = Number(eqCluster); rewriteEqM.mutate(req); }} className="space-y-4">
+        <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const req: MaintenanceRequest = { engine: 'spark' }; if (eqCluster !== 'local') req.sparkClusterId = Number(eqCluster); const p: Record<string, string> = {}; const ts = fd.get('ts') as string; if (ts) p['target-file-size-bytes'] = String(Number(ts) * 1048576); const dft = fd.get('dft') as string; if (dft) p['delete-file-threshold'] = dft; if (Object.keys(p).length) req.parameters = p; rewriteEqM.mutate(req); }} className="space-y-4">
           <p className="text-sm text-muted-foreground">Iceberg has no dedicated procedure for equality deletes, so this rewrites the affected data files via Spark <code>rewrite_data_files</code>.</p>
           <div className="space-y-2"><Label>Spark target</Label>
             <Select value={eqCluster} onValueChange={setEqCluster}>
@@ -1553,6 +1653,8 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
             </Select>
             <p className="text-xs text-muted-foreground">Configure clusters in Settings · Spark must be installed for execution.</p>
           </div>
+          <div className="space-y-2"><Label>Target file size (MB)</Label><Input name="ts" type="number" placeholder="512" /></div>
+          <div className="space-y-2"><Label>Delete-file threshold</Label><Input name="dft" type="number" placeholder="1" /><p className="text-xs text-muted-foreground">Min delete files on a data file before it's rewritten (default 1).</p></div>
           <Button type="submit" disabled={rewriteEqM.isPending}>{rewriteEqM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Run Spark Rewrite</Button>
         </form>
       ),
@@ -1610,6 +1712,8 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
                 dialogOpen={action.dialogOpen}
                 setOpen={action.setOpen}
                 content={action.content}
+                lastRun={lastRunByAction[action.actionType]}
+                mutation={mutationByAction[action.actionType]}
               />
             ))}
         </MaintenanceSection>
