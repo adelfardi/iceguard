@@ -319,6 +319,10 @@ public class PipelineService {
                 yield executor.rollbackToSnapshot(ctx, Long.parseLong(params.get("snapshotId")));
             }
             case "REWRITE_DATA_FILES" -> maintenanceService.rewriteDataFilesForPipeline(ctx, catalog, params);
+            case "REWRITE_POSITION_DELETE_FILES" ->
+                    maintenanceService.rewritePositionDeletesForPipeline(ctx, catalog, params);
+            case "REWRITE_EQUALITY_DELETE_FILES" ->
+                    maintenanceService.rewriteEqualityDeletesForPipeline(ctx, catalog, params);
             case "REWRITE_MANIFESTS" -> executor.rewriteManifests(ctx, params);
             case "REMOVE_ORPHAN_FILES" -> executor.removeOrphanFiles(ctx, params);
             default -> MaintenanceResult.failure("Unknown action type: " + actionType);

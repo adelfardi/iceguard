@@ -251,6 +251,30 @@ export const maintenanceApi = {
         data,
       )
       .then((r) => r.data),
+  rewritePositionDeleteFiles: (
+    catalogId: number,
+    namespace: string,
+    table: string,
+    data: MaintenanceRequest,
+  ) =>
+    api
+      .post<ExecutionInfo>(
+        `/maintenance/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/rewrite-position-delete-files`,
+        data,
+      )
+      .then((r) => r.data),
+  rewriteEqualityDeleteFiles: (
+    catalogId: number,
+    namespace: string,
+    table: string,
+    data: MaintenanceRequest,
+  ) =>
+    api
+      .post<ExecutionInfo>(
+        `/maintenance/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/rewrite-equality-delete-files`,
+        data,
+      )
+      .then((r) => r.data),
 };
 
 export const executionApi = {

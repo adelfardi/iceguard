@@ -22,6 +22,20 @@ public interface MaintenanceExecutor {
         return MaintenanceResult.unsupported("removeOrphanFiles not supported by " + name());
     }
 
+    /** Compact position-delete files (merge-on-read). Requires a compute engine (Spark). */
+    default MaintenanceResult rewritePositionDeletes(ExecutorContext ctx, Map<String, String> options) {
+        return MaintenanceResult.unsupported("rewritePositionDeletes not supported by " + name());
+    }
+
+    /**
+     * Remove equality-delete files by rewriting the data files that carry them. Iceberg has no
+     * dedicated procedure for this, so it is realised through {@code rewrite_data_files}. Requires
+     * a compute engine (Spark).
+     */
+    default MaintenanceResult rewriteEqualityDeletes(ExecutorContext ctx, Map<String, String> options) {
+        return MaintenanceResult.unsupported("rewriteEqualityDeletes not supported by " + name());
+    }
+
     record ExecutorContext(
             String catalogName,
             String catalogUri,

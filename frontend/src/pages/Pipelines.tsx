@@ -849,8 +849,8 @@ function PipelineFormDialog({
                                   <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="java">Java API (analyse only)</SelectItem>
-                                  <SelectItem value="spark">Spark (real compaction)</SelectItem>
+                                  <SelectItem value="java">Java API (small tables, in-process)</SelectItem>
+                                  <SelectItem value="spark">Spark (large / merge-on-read)</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>

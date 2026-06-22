@@ -15,6 +15,8 @@ const ICON_PATHS: Record<string, string> = {
   database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
   brush:    '<path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>',
   undo:     '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11"/>',
+  eraser:   '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>',
+  scissors: '<circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/>',
   zap:      '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
   circleX:  '<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
 };
@@ -33,6 +35,8 @@ const VIS_META: Record<string, { color: string; icon: string }> = {
   EXPIRE_SNAPSHOTS:    { color: '#8b5cf6', icon: 'camera' },
   REWRITE_MANIFESTS:   { color: '#f59e0b', icon: 'files' },
   REWRITE_DATA_FILES:  { color: '#10b981', icon: 'database' },
+  REWRITE_POSITION_DELETE_FILES: { color: '#06b6d4', icon: 'eraser' },
+  REWRITE_EQUALITY_DELETE_FILES: { color: '#14b8a6', icon: 'scissors' },
   REMOVE_ORPHAN_FILES: { color: '#f43f5e', icon: 'brush' },
   ROLLBACK:            { color: '#3b82f6', icon: 'undo' },
 };

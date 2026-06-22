@@ -122,6 +122,93 @@ public class MaintenanceService {
         return executor.rewriteDataFiles(ctx, baseOptions);
     }
 
+    /**
+     * Compact position-delete files. This is a Spark-only action (delete-file rewriting needs a
+     * compute engine), so it runs on Spark unless {@code engine="java"} is explicitly requested,
+     * in which case it returns an error.
+     */
+    @Transactional
+    public ExecutionResponse rewritePositionDeleteFiles(Long catalogId, String namespace, String tableName,
+                                                        MaintenanceRequest request) {
+        CatalogConfig config = catalogService.findOrThrow(catalogId);
+        ExecutorContext ctx = buildContext(config, namespace, tableName);
+
+        ExecutionHistory history = startExecution(config, namespace, tableName, "REWRITE_POSITION_DELETE_FILES");
+
+        Map<String, String> baseOptions = request.parameters() != null ? request.parameters() : Map.of();
+        MaintenanceResult result;
+        if ("java".equalsIgnoreCase(request.engine())) {
+            result = MaintenanceResult.failure(
+                    "rewrite_position_delete_files is not available with the Java engine "
+                    + "(rewriting delete files needs Spark). Use engine=\"spark\".");
+        } else {
+            result = sparkExecutor.rewritePositionDeletes(
+                    ctx, buildSparkOptions(config, baseOptions, request.sparkClusterId()));
+        }
+
+        return completeExecution(history, result);
+    }
+
+    /** Compact position-delete files for pipeline tasks (Spark engine; see {@link #rewritePositionDeleteFiles}). */
+    public MaintenanceResult rewritePositionDeletesForPipeline(ExecutorContext ctx, CatalogConfig config,
+                                                               Map<String, String> params) {
+        Map<String, String> baseOptions = new LinkedHashMap<>(params);
+        String engine = baseOptions.remove("engine");
+        String sparkClusterIdStr = baseOptions.remove("sparkClusterId");
+        if ("java".equalsIgnoreCase(engine)) {
+            return MaintenanceResult.failure(
+                    "rewrite_position_delete_files is not available with the Java engine — use engine=\"spark\".");
+        }
+        Long sparkClusterId = null;
+        if (sparkClusterIdStr != null && !sparkClusterIdStr.isBlank()) {
+            sparkClusterId = Long.parseLong(sparkClusterIdStr);
+        }
+        return sparkExecutor.rewritePositionDeletes(ctx, buildSparkOptions(config, baseOptions, sparkClusterId));
+    }
+
+    /**
+     * Remove equality-delete files (Spark-only). Iceberg has no dedicated procedure, so this rewrites
+     * the data files that carry the deletes (via {@code rewrite_data_files}); see the Spark executor.
+     */
+    @Transactional
+    public ExecutionResponse rewriteEqualityDeleteFiles(Long catalogId, String namespace, String tableName,
+                                                        MaintenanceRequest request) {
+        CatalogConfig config = catalogService.findOrThrow(catalogId);
+        ExecutorContext ctx = buildContext(config, namespace, tableName);
+
+        ExecutionHistory history = startExecution(config, namespace, tableName, "REWRITE_EQUALITY_DELETE_FILES");
+
+        Map<String, String> baseOptions = request.parameters() != null ? request.parameters() : Map.of();
+        MaintenanceResult result;
+        if ("java".equalsIgnoreCase(request.engine())) {
+            result = MaintenanceResult.failure(
+                    "rewrite_equality_delete_files is not available with the Java engine "
+                    + "(rewriting delete files needs Spark). Use engine=\"spark\".");
+        } else {
+            result = sparkExecutor.rewriteEqualityDeletes(
+                    ctx, buildSparkOptions(config, baseOptions, request.sparkClusterId()));
+        }
+
+        return completeExecution(history, result);
+    }
+
+    /** Remove equality-delete files for pipeline tasks (Spark engine; see {@link #rewriteEqualityDeleteFiles}). */
+    public MaintenanceResult rewriteEqualityDeletesForPipeline(ExecutorContext ctx, CatalogConfig config,
+                                                               Map<String, String> params) {
+        Map<String, String> baseOptions = new LinkedHashMap<>(params);
+        String engine = baseOptions.remove("engine");
+        String sparkClusterIdStr = baseOptions.remove("sparkClusterId");
+        if ("java".equalsIgnoreCase(engine)) {
+            return MaintenanceResult.failure(
+                    "rewrite_equality_delete_files is not available with the Java engine — use engine=\"spark\".");
+        }
+        Long sparkClusterId = null;
+        if (sparkClusterIdStr != null && !sparkClusterIdStr.isBlank()) {
+            sparkClusterId = Long.parseLong(sparkClusterIdStr);
+        }
+        return sparkExecutor.rewriteEqualityDeletes(ctx, buildSparkOptions(config, baseOptions, sparkClusterId));
+    }
+
     /** Assemble Iceberg rewrite options plus reserved Spark/catalog/S3 infrastructure keys. */
     private Map<String, String> buildSparkOptions(CatalogConfig config, Map<String, String> baseOptions,
                                                   Long sparkClusterId) {

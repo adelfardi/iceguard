@@ -82,24 +82,37 @@ public class SparkMaintenanceExecutor implements MaintenanceExecutor {
 
     @Override
     public MaintenanceResult rewriteDataFiles(ExecutorContext ctx, Map<String, String> options) {
+        String call = buildCall("rewrite_data_files", ctx.namespace(), ctx.tableName(), callOptions(options));
+        return runCall(ctx, options, call, "rewrite_data_files");
+    }
+
+    @Override
+    public MaintenanceResult rewritePositionDeletes(ExecutorContext ctx, Map<String, String> options) {
+        String call = buildCall("rewrite_position_delete_files", ctx.namespace(), ctx.tableName(), callOptions(options));
+        return runCall(ctx, options, call, "rewrite_position_delete_files");
+    }
+
+    @Override
+    public MaintenanceResult rewriteEqualityDeletes(ExecutorContext ctx, Map<String, String> options) {
+        // Iceberg has no dedicated procedure for equality deletes; they are materialised by
+        // rewriting the data files that carry them. delete-file-threshold=1 makes rewrite_data_files
+        // pick up any data file that has delete files attached.
+        Map<String, String> callOpts = callOptions(options);
+        callOpts.putIfAbsent("delete-file-threshold", "1");
+        String call = buildCall("rewrite_data_files", ctx.namespace(), ctx.tableName(), callOpts);
+        return runCall(ctx, options, call, "rewrite_data_files (equality deletes)");
+    }
+
+    /** Launches {@code spark-sql -e <call>} and turns the subprocess outcome into a result. */
+    private MaintenanceResult runCall(ExecutorContext ctx, Map<String, String> options, String call, String label) {
         String master = options.getOrDefault(OPT_MASTER, "local[*]");
         String catalogUri = options.get(OPT_CATALOG_URI);
         if (catalogUri == null || catalogUri.isBlank()) {
-            return MaintenanceResult.failure("Spark rewrite requires the catalog URI");
+            return MaintenanceResult.failure("Spark " + label + " requires the catalog URI");
         }
 
-        // Iceberg CALL options = every non-reserved key
-        Map<String, String> rewriteOptions = new LinkedHashMap<>();
-        for (var e : options.entrySet()) {
-            if (!e.getKey().startsWith("__")) {
-                rewriteOptions.put(e.getKey(), e.getValue());
-            }
-        }
-
-        String call = buildRewriteCall(ctx.namespace(), ctx.tableName(), rewriteOptions);
         List<String> command = buildCommand(master, catalogUri, options, call);
-
-        LOG.infof("Launching Spark rewrite on master=%s for %s.%s", master, ctx.namespace(), ctx.tableName());
+        LOG.infof("Launching Spark %s on master=%s for %s.%s", label, master, ctx.namespace(), ctx.tableName());
 
         try {
             ProcessBuilder pb = new ProcessBuilder(command);
@@ -119,7 +132,7 @@ public class SparkMaintenanceExecutor implements MaintenanceExecutor {
             boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                return MaintenanceResult.failure("Spark rewrite timed out after " + timeoutSeconds + "s");
+                return MaintenanceResult.failure("Spark " + label + " timed out after " + timeoutSeconds + "s");
             }
 
             int exit = process.exitValue();
@@ -134,19 +147,29 @@ public class SparkMaintenanceExecutor implements MaintenanceExecutor {
             details.put("output", output);
 
             if (exit == 0) {
-                return MaintenanceResult.success(
-                        "Spark rewrite_data_files completed on " + master, details);
+                return MaintenanceResult.success("Spark " + label + " completed on " + master, details);
             }
             return new MaintenanceResult(false,
-                    "Spark rewrite failed (exit " + exit + "). " + lastNonBlank(tail), details);
+                    "Spark " + label + " failed (exit " + exit + "). " + lastNonBlank(tail), details);
         } catch (java.io.IOException e) {
             return MaintenanceResult.failure(
                     "Could not launch '" + sparkSqlPath + "'. Is Spark installed and on PATH " +
                     "(or set iceguard.spark.sql-path)? Cause: " + e.getMessage());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return MaintenanceResult.failure("Spark rewrite was interrupted");
+            return MaintenanceResult.failure("Spark " + label + " was interrupted");
         }
+    }
+
+    /** Iceberg CALL options = every non-reserved key (reserved keys are the {@code __}-prefixed ones). */
+    private Map<String, String> callOptions(Map<String, String> options) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (var e : options.entrySet()) {
+            if (!e.getKey().startsWith("__")) {
+                out.put(e.getKey(), e.getValue());
+            }
+        }
+        return out;
     }
 
     private List<String> buildCommand(String master, String catalogUri,
@@ -203,17 +226,17 @@ public class SparkMaintenanceExecutor implements MaintenanceExecutor {
         return cmd;
     }
 
-    private String buildRewriteCall(String namespace, String table, Map<String, String> rewriteOptions) {
-        String target = catalogName + ".`" + namespace + "`.`" + table + "`";
+    /** Builds {@code CALL <cat>.system.<procedure>(table => 'ns.table'[, options => map(...)])}. */
+    private String buildCall(String procedure, String namespace, String table, Map<String, String> options) {
         StringBuilder sb = new StringBuilder("CALL ")
                 .append(catalogName)
-                .append(".system.rewrite_data_files(table => '")
+                .append(".system.").append(procedure).append("(table => '")
                 .append(namespace.replace("'", "''")).append(".").append(table.replace("'", "''"))
                 .append("'");
-        if (!rewriteOptions.isEmpty()) {
+        if (!options.isEmpty()) {
             sb.append(", options => map(");
             boolean first = true;
-            for (var e : rewriteOptions.entrySet()) {
+            for (var e : options.entrySet()) {
                 if (!first) sb.append(", ");
                 first = false;
                 sb.append("'").append(e.getKey().replace("'", "''")).append("'")
@@ -223,8 +246,6 @@ public class SparkMaintenanceExecutor implements MaintenanceExecutor {
             sb.append(")");
         }
         sb.append(")");
-        // `target` kept for readability/debugging; CALL uses the string identifier form.
-        LOG.debugf("rewrite target=%s", target);
         return sb.toString();
     }
 

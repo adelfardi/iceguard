@@ -1,4 +1,4 @@
-import { Camera, FileStack, HardDrive, Trash2, Undo2, type LucideIcon } from 'lucide-react';
+import { Camera, Eraser, FileStack, HardDrive, Scissors, Trash2, Undo2, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { PipelineTaskResponse } from '@/types';
 
@@ -26,6 +26,20 @@ export const ACTION_TYPE_META: Record<
     color: 'text-emerald-400',
     bgColor: 'bg-emerald-500/10',
     borderColor: 'border-emerald-500/30',
+  },
+  REWRITE_POSITION_DELETE_FILES: {
+    label: 'Rewrite Position Deletes',
+    icon: Eraser,
+    color: 'text-cyan-400',
+    bgColor: 'bg-cyan-500/10',
+    borderColor: 'border-cyan-500/30',
+  },
+  REWRITE_EQUALITY_DELETE_FILES: {
+    label: 'Rewrite Equality Deletes',
+    icon: Scissors,
+    color: 'text-teal-400',
+    bgColor: 'bg-teal-500/10',
+    borderColor: 'border-teal-500/30',
   },
   REMOVE_ORPHAN_FILES: {
     label: 'Remove Orphan Files',

@@ -290,7 +290,7 @@ export interface MaintenanceRequest {
   retainLast?: number;
   snapshotId?: string;
   parameters?: Record<string, string>;
-  /** "java" (default, analyse only) or "spark". */
+  /** "java" (default; Iceberg Java API, small tables) or "spark" (any size / merge-on-read). */
   engine?: 'java' | 'spark';
   /** Spark cluster id; omit with engine="spark" for local Spark. */
   sparkClusterId?: number;

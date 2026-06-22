@@ -64,6 +64,24 @@ public class MaintenanceResource {
         return maintenanceService.removeOrphanFiles(catalogId, namespace, table, request);
     }
 
+    @POST
+    @Path("/catalogs/{catalogId}/namespaces/{namespace}/tables/{table}/rewrite-position-delete-files")
+    public ExecutionResponse rewritePositionDeleteFiles(@PathParam("catalogId") Long catalogId,
+                                                        @PathParam("namespace") String namespace,
+                                                        @PathParam("table") String table,
+                                                        MaintenanceRequest request) {
+        return maintenanceService.rewritePositionDeleteFiles(catalogId, namespace, table, request);
+    }
+
+    @POST
+    @Path("/catalogs/{catalogId}/namespaces/{namespace}/tables/{table}/rewrite-equality-delete-files")
+    public ExecutionResponse rewriteEqualityDeleteFiles(@PathParam("catalogId") Long catalogId,
+                                                        @PathParam("namespace") String namespace,
+                                                        @PathParam("table") String table,
+                                                        MaintenanceRequest request) {
+        return maintenanceService.rewriteEqualityDeleteFiles(catalogId, namespace, table, request);
+    }
+
     @GET
     @Path("/executions")
     public List<ExecutionResponse> listExecutions(@QueryParam("limit") @DefaultValue("50") int limit) {

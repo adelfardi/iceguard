@@ -29,7 +29,7 @@ import {
   Bell, AlertTriangle, CheckCircle2, Mail, History, Activity,
   Layers, ChevronRight, ArrowLeft, Search, Gauge, Settings2,
   Network, GitCompare, ArrowRight, ArrowUp, ArrowDown, Minus, X,
-  Repeat, Zap, Paintbrush, Undo2,
+  Repeat, Zap, Paintbrush, Undo2, Eraser, Scissors,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -124,6 +124,8 @@ const SNAPSHOT_OP_META: Record<string, { Icon: typeof Plus; className: string }>
   EXPIRE_SNAPSHOTS: { Icon: Camera, className: 'text-violet-400' },
   REWRITE_MANIFESTS: { Icon: FileStack, className: 'text-amber-400' },
   REWRITE_DATA_FILES: { Icon: Database, className: 'text-emerald-400' },
+  REWRITE_POSITION_DELETE_FILES: { Icon: Eraser, className: 'text-cyan-400' },
+  REWRITE_EQUALITY_DELETE_FILES: { Icon: Scissors, className: 'text-teal-400' },
   REMOVE_ORPHAN_FILES: { Icon: Paintbrush, className: 'text-rose-400' },
   ROLLBACK: { Icon: Undo2, className: 'text-blue-400' },
 };
@@ -1390,8 +1392,12 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
   const [rewriteDataOpen, setRewriteDataOpen] = useState(false);
   const [rewriteManifestsOpen, setRewriteManifestsOpen] = useState(false);
   const [removeOrphansOpen, setRemoveOrphansOpen] = useState(false);
+  const [rewritePosOpen, setRewritePosOpen] = useState(false);
+  const [rewriteEqOpen, setRewriteEqOpen] = useState(false);
   const [rewriteEngine, setRewriteEngine] = useState<'java' | 'spark'>('java');
   const [rewriteCluster, setRewriteCluster] = useState<string>('local');
+  const [posCluster, setPosCluster] = useState<string>('local');
+  const [eqCluster, setEqCluster] = useState<string>('local');
 
   const { data: sparkClusters } = useQuery({ queryKey: ['spark-clusters'], queryFn: sparkClusterApi.list });
 
@@ -1406,6 +1412,8 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
   const rewriteDataM = makeMutation((r) => maintenanceApi.rewriteDataFiles(catalogId, namespace, table, r), 'Rewrite data', () => setRewriteDataOpen(false));
   const rewriteManifestsM = makeMutation((r) => maintenanceApi.rewriteManifests(catalogId, namespace, table, r), 'Rewrite manifests', () => setRewriteManifestsOpen(false));
   const removeOrphansM = makeMutation((r) => maintenanceApi.removeOrphanFiles(catalogId, namespace, table, r), 'Remove orphans', () => setRemoveOrphansOpen(false));
+  const rewritePosM = makeMutation((r) => maintenanceApi.rewritePositionDeleteFiles(catalogId, namespace, table, r), 'Rewrite position deletes', () => setRewritePosOpen(false));
+  const rewriteEqM = makeMutation((r) => maintenanceApi.rewriteEqualityDeleteFiles(catalogId, namespace, table, r), 'Rewrite equality deletes', () => setRewriteEqOpen(false));
 
   const actions: MaintenanceActionItem[] = [
     {
@@ -1414,7 +1422,7 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
       description: 'Compact small data files into larger ones for faster scans and better parallelism.',
       category: 'Compaction',
       risk: 'optimization',
-      tags: ['Java · analyse', 'Spark · execute'],
+      tags: ['Java · small tables', 'Spark · any size'],
       section: 'optimization',
       dialogOpen: rewriteDataOpen,
       setOpen: setRewriteDataOpen,
@@ -1424,8 +1432,8 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
             <Select value={rewriteEngine} onValueChange={(v) => setRewriteEngine(v as 'java' | 'spark')}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="java">Java API (analyse only)</SelectItem>
-                <SelectItem value="spark">Spark (real compaction)</SelectItem>
+                <SelectItem value="java">Java API (small tables, in-process)</SelectItem>
+                <SelectItem value="spark">Spark (large / merge-on-read)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1443,7 +1451,7 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
           )}
           <div className="space-y-2"><Label>Target file size (MB)</Label><Input name="ts" type="number" placeholder="512" /></div>
           <div className="space-y-2"><Label>Min input files</Label><Input name="mi" type="number" placeholder="5" /></div>
-          <Button type="submit" disabled={rewriteDataM.isPending}>{rewriteDataM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{rewriteEngine === 'spark' ? 'Run Spark Compaction' : 'Analyze'}</Button>
+          <Button type="submit" disabled={rewriteDataM.isPending}>{rewriteDataM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{rewriteEngine === 'spark' ? 'Run Spark Compaction' : 'Run Compaction'}</Button>
         </form>
       ),
     },
@@ -1492,6 +1500,60 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
         <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const req: MaintenanceRequest = {}; const h = fd.get('h') as string; if (h) req.olderThanMs = Number(h)*3600000; removeOrphansM.mutate(req); }} className="space-y-4">
           <div className="space-y-2"><Label>Older than (hours)</Label><Input name="h" type="number" placeholder="72" /><p className="text-xs text-muted-foreground">Safety threshold to avoid deleting active files.</p></div>
           <Button type="submit" variant="destructive" disabled={removeOrphansM.isPending}>{removeOrphansM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Remove Orphans</Button>
+        </form>
+      ),
+    },
+    {
+      id: 'rewrite-position-deletes',
+      actionType: 'REWRITE_POSITION_DELETE_FILES',
+      description: 'Compact position-delete files (merge-on-read) to keep reads fast. Runs on Spark.',
+      category: 'Compaction',
+      risk: 'optimization',
+      tags: ['Spark · execute'],
+      section: 'optimization',
+      dialogOpen: rewritePosOpen,
+      setOpen: setRewritePosOpen,
+      content: (
+        <form onSubmit={(e) => { e.preventDefault(); const req: MaintenanceRequest = { engine: 'spark' }; if (posCluster !== 'local') req.sparkClusterId = Number(posCluster); rewritePosM.mutate(req); }} className="space-y-4">
+          <p className="text-sm text-muted-foreground">Rewriting delete files needs a compute engine, so this action runs on Spark.</p>
+          <div className="space-y-2"><Label>Spark target</Label>
+            <Select value={posCluster} onValueChange={setPosCluster}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local">Local (local[*])</SelectItem>
+                {sparkClusters?.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name} <span className="text-muted-foreground">({c.masterUrl})</span></SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Configure clusters in Settings · Spark must be installed for execution.</p>
+          </div>
+          <Button type="submit" disabled={rewritePosM.isPending}>{rewritePosM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Run Spark Rewrite</Button>
+        </form>
+      ),
+    },
+    {
+      id: 'rewrite-equality-deletes',
+      actionType: 'REWRITE_EQUALITY_DELETE_FILES',
+      description: 'Remove equality-delete files by rewriting the data files that carry them. Runs on Spark.',
+      category: 'Compaction',
+      risk: 'optimization',
+      tags: ['Spark · execute'],
+      section: 'optimization',
+      dialogOpen: rewriteEqOpen,
+      setOpen: setRewriteEqOpen,
+      content: (
+        <form onSubmit={(e) => { e.preventDefault(); const req: MaintenanceRequest = { engine: 'spark' }; if (eqCluster !== 'local') req.sparkClusterId = Number(eqCluster); rewriteEqM.mutate(req); }} className="space-y-4">
+          <p className="text-sm text-muted-foreground">Iceberg has no dedicated procedure for equality deletes, so this rewrites the affected data files via Spark <code>rewrite_data_files</code>.</p>
+          <div className="space-y-2"><Label>Spark target</Label>
+            <Select value={eqCluster} onValueChange={setEqCluster}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local">Local (local[*])</SelectItem>
+                {sparkClusters?.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name} <span className="text-muted-foreground">({c.masterUrl})</span></SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Configure clusters in Settings · Spark must be installed for execution.</p>
+          </div>
+          <Button type="submit" disabled={rewriteEqM.isPending}>{rewriteEqM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Run Spark Rewrite</Button>
         </form>
       ),
     },
