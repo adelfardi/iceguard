@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import type { MaintenanceRequest, SnapshotInfo, AlertRuleResponse, ExecutionInfo } from '@/types';
+import { RewriteOptionsEditor, cleanRewriteParams } from '@/components/maintenance/RewriteOptions';
 import { AlertRuleForm } from './Alerts';
 import { TimelineTab } from './table-detail/TimelineTab';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -1461,6 +1462,7 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
   const [rewriteEqOpen, setRewriteEqOpen] = useState(false);
   const [rewriteEngine, setRewriteEngine] = useState<'java' | 'spark'>('java');
   const [rewriteCluster, setRewriteCluster] = useState<string>('local');
+  const [rewriteParams, setRewriteParams] = useState<Record<string, string>>({});
   const [posCluster, setPosCluster] = useState<string>('local');
   const [eqCluster, setEqCluster] = useState<string>('local');
 
@@ -1525,7 +1527,14 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
       dialogOpen: rewriteDataOpen,
       setOpen: setRewriteDataOpen,
       content: (
-        <form onSubmit={(e) => { e.preventDefault(); const fd = new FormData(e.currentTarget); const req: MaintenanceRequest = {}; const ts = fd.get('ts') as string; const mi = fd.get('mi') as string; if (ts || mi) { req.parameters = {}; if (ts) req.parameters['target-file-size-bytes'] = String(Number(ts)*1048576); if (mi) req.parameters['min-input-files'] = mi; } if (rewriteEngine === 'spark') { req.engine = 'spark'; if (rewriteCluster !== 'local') req.sparkClusterId = Number(rewriteCluster); } rewriteDataM.mutate(req); }} className="space-y-4">
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          const req: MaintenanceRequest = {};
+          const params = cleanRewriteParams(rewriteParams);
+          if (Object.keys(params).length) req.parameters = params;
+          if (rewriteEngine === 'spark') { req.engine = 'spark'; if (rewriteCluster !== 'local') req.sparkClusterId = Number(rewriteCluster); }
+          rewriteDataM.mutate(req);
+        }} className="space-y-4">
           <div className="space-y-2"><Label>Engine</Label>
             <Select value={rewriteEngine} onValueChange={(v) => setRewriteEngine(v as 'java' | 'spark')}>
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
@@ -1547,8 +1556,7 @@ function MaintenanceTab({ catalogId, namespace, table }: { catalogId: number; na
               <p className="text-xs text-muted-foreground">Configure clusters in Settings · Spark must be installed for execution.</p>
             </div>
           )}
-          <div className="space-y-2"><Label>Target file size (MB)</Label><Input name="ts" type="number" placeholder="512" /></div>
-          <div className="space-y-2"><Label>Min input files</Label><Input name="mi" type="number" placeholder="5" /></div>
+          <RewriteOptionsEditor params={rewriteParams} onChange={setRewriteParams} engine={rewriteEngine} />
           <Button type="submit" disabled={rewriteDataM.isPending}>{rewriteDataM.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{rewriteEngine === 'spark' ? 'Run Spark Compaction' : 'Run Compaction'}</Button>
         </form>
       ),

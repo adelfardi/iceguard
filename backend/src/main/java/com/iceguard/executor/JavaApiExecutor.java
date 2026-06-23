@@ -124,11 +124,15 @@ public class JavaApiExecutor implements MaintenanceExecutor {
 
             long totalDataFiles = parseLong(summary.get("total-data-files"));
             long totalFileSize = parseLong(summary.get("total-files-size"));
-            long targetSize = parseLong(table.properties()
-                    .getOrDefault("write.target-file-size-bytes", String.valueOf(DEFAULT_TARGET_FILE_SIZE)));
+            // Target size: request option wins, else the table property, else the default.
+            long targetSize = parseLong(options.getOrDefault("target-file-size-bytes",
+                    table.properties().getOrDefault("write.target-file-size-bytes",
+                            String.valueOf(DEFAULT_TARGET_FILE_SIZE))));
             if (targetSize <= 0) {
                 targetSize = DEFAULT_TARGET_FILE_SIZE;
             }
+            // Minimum number of data files before compaction is worthwhile (default 2).
+            long minInputFiles = Math.max(2, parseLong(options.getOrDefault("min-input-files", "2")));
             long avgFileSize = totalDataFiles > 0 ? totalFileSize / totalDataFiles : 0;
 
             // ── Hard safety limits: above these, do NOT apply — return an error. ──
@@ -144,7 +148,7 @@ public class JavaApiExecutor implements MaintenanceExecutor {
             }
 
             // Nothing worth doing.
-            if (totalDataFiles < 2 || avgFileSize >= targetSize / 2) {
+            if (totalDataFiles < minInputFiles || avgFileSize >= targetSize / 2) {
                 Map<String, Object> d = new LinkedHashMap<>();
                 d.put("table", ctx.tableName());
                 d.put("totalDataFiles", totalDataFiles);

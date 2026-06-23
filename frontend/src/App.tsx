@@ -8,7 +8,7 @@ import { CatalogDetail } from '@/pages/CatalogDetail';
 import { CreateTable } from '@/pages/CreateTable';
 import { TableDetail } from '@/pages/TableDetail';
 import { Executions } from '@/pages/Executions';
-import { Pipelines } from '@/pages/Pipelines';
+import { Pipelines, PipelineEditor } from '@/pages/Pipelines';
 import { PipelineDetail } from '@/pages/PipelineDetail';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { Alerts } from '@/pages/Alerts';
@@ -35,6 +35,8 @@ const router = createBrowserRouter([
       { path: 'catalogs/:catalogId/namespaces/:namespace/tables/:table', element: <TableDetail /> },
       { path: 'executions', element: <Executions /> },
       { path: 'pipelines', element: <Pipelines /> },
+      { path: 'pipelines/new', element: <PipelineEditor /> },
+      { path: 'pipelines/:pipelineId/edit', element: <PipelineEditor /> },
       { path: 'pipelines/:pipelineId', element: <PipelineDetail /> },
       { path: 'alerts', element: <Alerts /> },
       { path: 'settings', element: <SettingsPage /> },

@@ -80,9 +80,19 @@ public class SparkMaintenanceExecutor implements MaintenanceExecutor {
         return MaintenanceResult.unsupported("rollback is not yet supported by the Spark executor");
     }
 
+    /** rewrite_data_files procedure args that are NOT options-map keys but named CALL arguments. */
+    private static final String[] REWRITE_NAMED_ARGS = {"strategy", "sort_order", "where"};
+
     @Override
     public MaintenanceResult rewriteDataFiles(ExecutorContext ctx, Map<String, String> options) {
-        String call = buildCall("rewrite_data_files", ctx.namespace(), ctx.tableName(), callOptions(options));
+        Map<String, String> opts = callOptions(options);
+        // strategy / sort_order / where are named procedure arguments, not options-map entries.
+        Map<String, String> named = new LinkedHashMap<>();
+        for (String k : REWRITE_NAMED_ARGS) {
+            String v = opts.remove(k);
+            if (v != null && !v.isBlank()) named.put(k, v);
+        }
+        String call = buildRewriteDataFilesCall(ctx.namespace(), ctx.tableName(), named, opts);
         return runCall(ctx, options, call, "rewrite_data_files");
     }
 
@@ -170,6 +180,37 @@ public class SparkMaintenanceExecutor implements MaintenanceExecutor {
             }
         }
         return out;
+    }
+
+    /**
+     * Builds the rewrite_data_files CALL with named arguments (strategy / sort_order / where) plus
+     * an options map: {@code CALL <cat>.system.rewrite_data_files(table => 'ns.t', strategy => '...',
+     * sort_order => '...', where => '...', options => map(...))}.
+     */
+    private String buildRewriteDataFilesCall(String namespace, String table,
+                                             Map<String, String> namedArgs, Map<String, String> options) {
+        StringBuilder sb = new StringBuilder("CALL ")
+                .append(catalogName)
+                .append(".system.rewrite_data_files(table => '")
+                .append(namespace.replace("'", "''")).append(".").append(table.replace("'", "''"))
+                .append("'");
+        for (var e : namedArgs.entrySet()) {
+            sb.append(", ").append(e.getKey()).append(" => '").append(e.getValue().replace("'", "''")).append("'");
+        }
+        if (!options.isEmpty()) {
+            sb.append(", options => map(");
+            boolean first = true;
+            for (var e : options.entrySet()) {
+                if (!first) sb.append(", ");
+                first = false;
+                sb.append("'").append(e.getKey().replace("'", "''")).append("'")
+                  .append(", ")
+                  .append("'").append(e.getValue().replace("'", "''")).append("'");
+            }
+            sb.append(")");
+        }
+        sb.append(")");
+        return sb.toString();
     }
 
     private List<String> buildCommand(String master, String catalogUri,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pipelineApi, catalogApi, namespaceApi, sparkClusterApi } from '@/api/client';
 import type { CreatePipelineRequest, PipelineResponse } from '@/types';
@@ -11,13 +11,6 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import {
   Select,
   SelectContent,
@@ -45,11 +38,13 @@ import {
   Clock,
   Database,
   X,
+  ArrowLeft,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { PipelineFlow, ACTION_TYPE_META, getActionMeta } from '@/components/pipeline/PipelineFlow';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { RewriteOptionsEditor, cleanRewriteParams } from '@/components/maintenance/RewriteOptions';
 
 const ACTION_TYPES = Object.keys(ACTION_TYPE_META);
 
@@ -76,10 +71,6 @@ const ACTION_PARAMS: Record<string, ActionParamField[]> = {
   EXPIRE_SNAPSHOTS: [
     { key: 'olderThanMs', label: 'Older than (hours)', placeholder: '168', factor: 3_600_000 },
     { key: 'retainLast', label: 'Retain last N', placeholder: '5' },
-  ],
-  REWRITE_DATA_FILES: [
-    { key: 'target-file-size-bytes', label: 'Target file size (MB)', placeholder: '512', factor: 1_048_576 },
-    { key: 'min-input-files', label: 'Min input files', placeholder: '5' },
   ],
   REMOVE_ORPHAN_FILES: [
     { key: 'olderThanMs', label: 'Older than (hours)', placeholder: '72', factor: 3_600_000 },
@@ -166,8 +157,7 @@ function formatNextRun(cron: string): string {
 
 export function Pipelines() {
   const queryClient = useQueryClient();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingPipeline, setEditingPipeline] = useState<PipelineResponse | null>(null);
+  const navigate = useNavigate();
   const [deleteTarget, setDeleteTarget] = useState<PipelineResponse | null>(null);
 
   const { data: pipelines, isLoading } = useQuery({
@@ -215,13 +205,11 @@ export function Pipelines() {
   }
 
   function openEdit(pipeline: PipelineResponse) {
-    setEditingPipeline(pipeline);
-    setDialogOpen(true);
+    navigate(`/pipelines/${pipeline.id}/edit`);
   }
 
   function openCreate() {
-    setEditingPipeline(null);
-    setDialogOpen(true);
+    navigate('/pipelines/new');
   }
 
   return (
@@ -384,13 +372,6 @@ export function Pipelines() {
         </div>
       )}
 
-      {/* Create / Edit Dialog */}
-      <PipelineFormDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        pipeline={editingPipeline}
-      />
-
       {/* Delete Confirmation */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
@@ -419,28 +400,26 @@ export function Pipelines() {
 
 // ── Create / Edit Pipeline Dialog ──
 
-function PipelineFormDialog({
-  open,
-  onOpenChange,
-  pipeline,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  pipeline: PipelineResponse | null;
-}) {
+export function PipelineEditor() {
+  const navigate = useNavigate();
+  const { pipelineId } = useParams<{ pipelineId?: string }>();
+  const isEdit = !!pipelineId;
   const queryClient = useQueryClient();
-  const isEdit = !!pipeline;
+
+  const { data: pipeline } = useQuery({
+    queryKey: ['pipeline', pipelineId],
+    queryFn: () => pipelineApi.get(Number(pipelineId)),
+    enabled: isEdit,
+  });
 
   const { data: catalogs } = useQuery({
     queryKey: ['catalogs'],
     queryFn: catalogApi.list,
-    enabled: open,
   });
 
   const { data: sparkClusters } = useQuery({
     queryKey: ['spark-clusters'],
     queryFn: sparkClusterApi.list,
-    enabled: open,
   });
 
   const [name, setName] = useState('');
@@ -458,13 +437,13 @@ function PipelineFormDialog({
   const { data: namespaces, isLoading: loadingNamespaces } = useQuery({
     queryKey: ['namespaces', catalogIdNum],
     queryFn: () => namespaceApi.list(catalogIdNum!),
-    enabled: open && catalogReady,
+    enabled: catalogReady,
   });
 
   const { data: tables, isLoading: loadingTables } = useQuery({
     queryKey: ['tables', catalogIdNum, namespace],
     queryFn: () => namespaceApi.listTables(catalogIdNum!, namespace),
-    enabled: open && catalogReady && namespace.length > 0,
+    enabled: catalogReady && namespace.length > 0,
   });
 
   const namespaceNames = namespaces?.map((ns) => ns.name) ?? [];
@@ -512,23 +491,17 @@ function PipelineFormDialog({
     }
   };
 
-  // Reset form when pipeline prop changes or dialog opens
+  // Populate the form from the fetched pipeline (edit), or start blank (create).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   React.useEffect(() => {
-    if (open) {
-      resetForm(pipeline);
-    }
-  }, [open, pipeline]);
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    onOpenChange(nextOpen);
-  };
+    resetForm(pipeline ?? null);
+  }, [pipeline]);
 
   const createMutation = useMutation({
     mutationFn: (data: CreatePipelineRequest) => pipelineApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pipelines'] });
-      onOpenChange(false);
+      navigate('/pipelines');
       toast.success('Pipeline created');
     },
     onError: (err: Error) => toast.error(`Failed to create: ${err.message}`),
@@ -539,7 +512,7 @@ function PipelineFormDialog({
       pipelineApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pipelines'] });
-      onOpenChange(false);
+      navigate('/pipelines');
       toast.success('Pipeline updated');
     },
     onError: (err: Error) => toast.error(`Failed to update: ${err.message}`),
@@ -606,11 +579,14 @@ function PipelineFormDialog({
       enabled,
       tasks: tasks
         .filter((t) => t.name.trim())
-        .map((t) => ({
-          name: t.name.trim(),
-          actionType: t.actionType,
-          parameters: Object.keys(t.parameters).length > 0 ? t.parameters : undefined,
-        })),
+        .map((t) => {
+          const params = cleanRewriteParams(t.parameters);
+          return {
+            name: t.name.trim(),
+            actionType: t.actionType,
+            parameters: Object.keys(params).length > 0 ? params : undefined,
+          };
+        }),
     };
 
     if (isEdit && pipeline) {
@@ -621,12 +597,16 @@ function PipelineFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit Pipeline' : 'Create Pipeline'}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-5">
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="sm" onClick={() => navigate('/pipelines')} className="text-muted-foreground">
+          <ArrowLeft className="mr-1.5 h-4 w-4" /> Pipelines
+        </Button>
+        <h1 className="text-xl font-semibold">{isEdit ? 'Edit Pipeline' : 'Create Pipeline'}</h1>
+      </div>
+      <Card>
+        <CardContent className="p-6">
+          <form onSubmit={handleSubmit} className="space-y-5">
           {/* Basic info */}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
@@ -882,8 +862,19 @@ function PipelineFormDialog({
                           </div>
                         )}
 
-                        {/* Parameters (like the Maintenance tab) */}
-                        {(ACTION_PARAMS[task.actionType] ?? []).length > 0 ? (
+                        {/* Parameters (same component as the Maintenance tab) */}
+                        {task.actionType === 'REWRITE_DATA_FILES' ? (
+                          <RewriteOptionsEditor
+                            params={Object.fromEntries(Object.entries(task.parameters).filter(([k]) => k !== ENGINE_PARAM && k !== SPARK_CLUSTER_PARAM))}
+                            onChange={(next) => {
+                              const reserved: Record<string, string> = {};
+                              if (task.parameters[ENGINE_PARAM]) reserved[ENGINE_PARAM] = task.parameters[ENGINE_PARAM];
+                              if (task.parameters[SPARK_CLUSTER_PARAM]) reserved[SPARK_CLUSTER_PARAM] = task.parameters[SPARK_CLUSTER_PARAM];
+                              updateTask(task.key, { parameters: { ...reserved, ...next } });
+                            }}
+                            engine={taskEngine(task)}
+                          />
+                        ) : (ACTION_PARAMS[task.actionType] ?? []).length > 0 ? (
                           <div className="grid gap-2 sm:grid-cols-2 rounded-md border border-border/50 bg-background/40 p-2">
                             <span className="sm:col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Parameters</span>
                             {ACTION_PARAMS[task.actionType].map((field) => (
@@ -899,9 +890,9 @@ function PipelineFormDialog({
                               </div>
                             ))}
                           </div>
-                        ) : task.actionType !== 'REWRITE_DATA_FILES' ? (
+                        ) : (
                           <p className="text-[11px] text-muted-foreground italic">No parameters for this action.</p>
-                        ) : null}
+                        )}
                       </div>
 
                       {/* Remove */}
@@ -923,14 +914,16 @@ function PipelineFormDialog({
             </div>
           </div>
 
-          <DialogFooter>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => navigate('/pipelines')}>Cancel</Button>
             <Button type="submit" disabled={isPending}>
               {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isEdit ? 'Update Pipeline' : 'Create Pipeline'}
             </Button>
-          </DialogFooter>
+          </div>
         </form>
-      </DialogContent>
-    </Dialog>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
