@@ -37,6 +37,7 @@ import {
   Loader2,
   Clock,
   Database,
+  Search,
   X,
   ArrowLeft,
 } from 'lucide-react';
@@ -95,13 +96,117 @@ interface TaskDraft {
   parameters: Record<string, string>;
 }
 
+const WIZARD_STEPS = [
+  { id: 'target', title: 'Target', description: 'Choose catalog, namespace and table' },
+  { id: 'tasks', title: 'Tasks', description: 'Build the sequence' },
+  { id: 'schedule', title: 'Cron', description: 'Schedule the run' },
+  { id: 'details', title: 'Details', description: 'Name and describe it' },
+] as const;
+
+type TargetStage = 'catalog' | 'namespace' | 'table';
+
 function createTaskDraft(): TaskDraft {
+  const actionType = ACTION_TYPES[0];
   return {
     key: crypto.randomUUID(),
-    name: '',
-    actionType: ACTION_TYPES[0],
+    name: getActionMeta(actionType).label,
+    actionType,
     parameters: {},
   };
+}
+
+interface SearchCardOption {
+  value: string;
+  label: string;
+  description?: string;
+  badge?: string;
+}
+
+function SearchCardPicker({
+  searchPlaceholder,
+  options,
+  value,
+  onChange,
+  disabled,
+  loading,
+  emptyLabel,
+}: {
+  searchPlaceholder: string;
+  options: SearchCardOption[];
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  loading?: boolean;
+  emptyLabel: string;
+}) {
+  const [query, setQuery] = useState('');
+  const filtered = options.filter((option) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return (
+      option.label.toLowerCase().includes(q) ||
+      option.description?.toLowerCase().includes(q) ||
+      option.badge?.toLowerCase().includes(q)
+    );
+  });
+
+  return (
+    <Card className={cn('glass shadow-card', disabled && 'opacity-60')}>
+      <CardContent className="space-y-3 p-4">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={searchPlaceholder}
+            disabled={disabled}
+            className="h-8 pl-8 text-sm"
+          />
+        </div>
+
+        <div className="grid max-h-56 gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
+          {loading ? (
+            [1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-20 w-full" />)
+          ) : filtered.length === 0 ? (
+            <p className="col-span-full rounded-lg border border-dashed border-border/60 py-6 text-center text-sm text-muted-foreground">
+              {emptyLabel}
+            </p>
+          ) : (
+            filtered.map((option) => {
+              const selected = option.value === value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onChange(option.value)}
+                  className={cn(
+                    'min-w-0 rounded-lg border p-3 text-left transition-all',
+                    'hover:border-indigo-500/40 hover:bg-indigo-500/[0.04]',
+                    selected
+                      ? 'border-indigo-500/60 bg-indigo-500/[0.08] ring-1 ring-indigo-500/30'
+                      : 'border-border/60 bg-card/50',
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-medium">{option.label}</span>
+                    {option.badge && (
+                      <Badge variant="outline" className="shrink-0 text-[10px] font-normal">
+                        {option.badge}
+                      </Badge>
+                    )}
+                  </div>
+                  {option.description && (
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{option.description}</p>
+                  )}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function formatNextRun(cron: string): string {
@@ -429,7 +534,10 @@ export function PipelineEditor() {
   const [tableName, setTableName] = useState('');
   const [cronExpression, setCronExpression] = useState('');
   const [enabled, setEnabled] = useState(true);
-  const [tasks, setTasks] = useState<TaskDraft[]>([createTaskDraft()]);
+  const [tasks, setTasks] = useState<TaskDraft[]>([]);
+  const [selectedTaskKey, setSelectedTaskKey] = useState<string | null>(null);
+  const [wizardStep, setWizardStep] = useState(0);
+  const [targetStage, setTargetStage] = useState<TargetStage>('catalog');
 
   const catalogIdNum = catalogId ? Number(catalogId) : null;
   const catalogReady = catalogIdNum != null && !isNaN(catalogIdNum);
@@ -456,6 +564,27 @@ export function PipelineEditor() {
     tableName.length > 0 && tables && !tables.includes(tableName)
       ? [tableName, ...tables]
       : (tables ?? []);
+  const catalogOptions: SearchCardOption[] = (catalogs ?? []).map((cat) => ({
+    value: String(cat.id),
+    label: cat.name,
+    description: cat.uri,
+    badge: cat.vendor,
+  }));
+  const namespaceCardOptions: SearchCardOption[] = namespaceOptions.map((ns) => ({
+    value: ns,
+    label: ns,
+    description: `${ns} namespace`,
+  }));
+  const tableCardOptions: SearchCardOption[] = tableOptions.map((t) => ({
+    value: t,
+    label: t,
+    description: `${namespace}.${t}`,
+  }));
+  const targetStageOptions: { id: TargetStage; label: string; ready: boolean }[] = [
+    { id: 'catalog', label: catalogOptions.find((opt) => opt.value === catalogId)?.label ?? 'Catalog', ready: Boolean(catalogId) },
+    { id: 'namespace', label: namespace || 'Namespace', ready: Boolean(namespace) },
+    { id: 'table', label: tableName || 'Table', ready: Boolean(tableName) },
+  ];
 
   // Reset form when dialog opens
   const resetForm = (p: PipelineResponse | null) => {
@@ -477,8 +606,10 @@ export function PipelineEditor() {
                 actionType: t.actionType,
                 parameters: { ...t.parameters },
               }))
-          : [createTaskDraft()],
+          : [],
       );
+      setWizardStep(0);
+      setTargetStage('catalog');
     } else {
       setName('');
       setDescription('');
@@ -487,7 +618,9 @@ export function PipelineEditor() {
       setTableName('');
       setCronExpression('');
       setEnabled(true);
-      setTasks([createTaskDraft()]);
+      setTasks([]);
+      setWizardStep(0);
+      setTargetStage('catalog');
     }
   };
 
@@ -519,9 +652,40 @@ export function PipelineEditor() {
   });
 
   const isPending = createMutation.isPending || updateMutation.isPending;
+  const selectedTask = tasks.find((t) => t.key === selectedTaskKey) ?? tasks[0];
+  const canSubmit = Boolean(catalogId && namespace && tableName && name.trim() && tasks.length > 0);
+
+  function canContinueStep(step = wizardStep): boolean {
+    switch (WIZARD_STEPS[step]?.id) {
+      case 'target':
+        return Boolean(catalogId && namespace && tableName);
+      case 'tasks':
+        return tasks.length > 0;
+      case 'schedule':
+        return true;
+      case 'details':
+        return Boolean(name.trim());
+      default:
+        return false;
+    }
+  }
+
+  function goNext() {
+    if (!canContinueStep()) {
+      toast.error('Complete this step before continuing.');
+      return;
+    }
+    setWizardStep((step) => Math.min(step + 1, WIZARD_STEPS.length - 1));
+  }
+
+  function goBack() {
+    setWizardStep((step) => Math.max(step - 1, 0));
+  }
 
   function addTask() {
-    setTasks((prev) => [...prev, createTaskDraft()]);
+    const t = createTaskDraft();
+    setTasks((prev) => [...prev, t]);
+    setSelectedTaskKey(t.key);
   }
 
   function removeTask(key: string) {
@@ -560,15 +724,25 @@ export function PipelineEditor() {
     setCatalogId(value);
     setNamespace('');
     setTableName('');
+    setTargetStage('namespace');
   }
 
   function handleNamespaceChange(value: string) {
     setNamespace(value);
     setTableName('');
+    setTargetStage('table');
+  }
+
+  function handleTableChange(value: string) {
+    setTableName(value);
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!canSubmit) {
+      toast.error('Choose a catalog, namespace, table, at least one task, and a pipeline name.');
+      return;
+    }
     const data: CreatePipelineRequest = {
       name: name.trim(),
       description: description.trim() || undefined,
@@ -578,11 +752,11 @@ export function PipelineEditor() {
       cronExpression: cronExpression.trim() || undefined,
       enabled,
       tasks: tasks
-        .filter((t) => t.name.trim())
         .map((t) => {
           const params = cleanRewriteParams(t.parameters);
+          const taskName = t.name.trim() || getActionMeta(t.actionType).label;
           return {
-            name: t.name.trim(),
+            name: taskName,
             actionType: t.actionType,
             parameters: Object.keys(params).length > 0 ? params : undefined,
           };
@@ -597,7 +771,7 @@ export function PipelineEditor() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={() => navigate('/pipelines')} className="text-muted-foreground">
           <ArrowLeft className="mr-1.5 h-4 w-4" /> Pipelines
@@ -607,319 +781,345 @@ export function PipelineEditor() {
       <Card>
         <CardContent className="p-6">
           <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Basic info */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="pipeline-name">Pipeline Name</Label>
-              <Input
-                id="pipeline-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="daily-maintenance"
-                required
-              />
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {WIZARD_STEPS.map((step, idx) => {
+                  const active = idx === wizardStep;
+                  const done = idx < wizardStep && canContinueStep(idx);
+                  return (
+                    <button
+                      key={step.id}
+                      type="button"
+                      onClick={() => setWizardStep(idx)}
+                      className={cn(
+                        'flex min-w-[120px] items-center gap-2 rounded-lg border px-3 py-2 text-left transition-all',
+                        active
+                          ? 'border-indigo-500/50 bg-indigo-500/[0.08] ring-1 ring-indigo-500/30'
+                          : 'border-border/60 bg-muted/20 hover:bg-muted/40',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+                          active
+                            ? 'bg-indigo-500 text-white'
+                            : done
+                              ? 'bg-emerald-500/15 text-emerald-400'
+                              : 'bg-muted text-muted-foreground',
+                        )}
+                      >
+                        {idx + 1}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-semibold">{step.title}</span>
+                        <span className="block truncate text-[10px] text-muted-foreground">{step.description}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="pipeline-catalog">Catalog</Label>
-              <Select value={catalogId} onValueChange={handleCatalogChange} required>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select catalog" />
-                </SelectTrigger>
-                <SelectContent>
-                  {catalogs?.map((cat) => (
-                    <SelectItem key={cat.id} value={String(cat.id)}>
-                      {cat.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+          {wizardStep === 0 && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-sm">
+                {targetStageOptions.map((stage, idx) => {
+                  const active = targetStage === stage.id;
+                  const disabled =
+                    (stage.id === 'namespace' && !catalogReady) ||
+                    (stage.id === 'table' && !namespace);
+                  return (
+                    <React.Fragment key={stage.id}>
+                      {idx > 0 && <span className="text-muted-foreground/35">/</span>}
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => setTargetStage(stage.id)}
+                        className={cn(
+                          'group min-w-0 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-45',
+                          active
+                            ? 'text-foreground'
+                            : 'text-muted-foreground hover:text-foreground',
+                        )}
+                      >
+                        <span className={cn(
+                          'block max-w-[180px] truncate font-medium underline-offset-4 group-hover:underline',
+                          active && 'underline decoration-indigo-500/70',
+                        )}>
+                          {stage.label}
+                        </span>
+                      </button>
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+
+              {targetStage === 'catalog' && (
+                <SearchCardPicker
+                  searchPlaceholder="Search catalogs..."
+                  options={catalogOptions}
+                  value={catalogId}
+                  onChange={handleCatalogChange}
+                  emptyLabel="No catalogs match your search."
+                />
+              )}
+
+              {targetStage === 'namespace' && (
+                <SearchCardPicker
+                  searchPlaceholder="Search namespaces..."
+                  options={namespaceCardOptions}
+                  value={namespace}
+                  onChange={handleNamespaceChange}
+                  disabled={!catalogReady}
+                  loading={loadingNamespaces}
+                  emptyLabel={
+                    !catalogReady
+                      ? 'Select a catalog first.'
+                      : namespaceOptions.length === 0
+                        ? 'No namespaces found.'
+                        : 'No namespaces match your search.'
+                  }
+                />
+              )}
+
+              {targetStage === 'table' && (
+                <SearchCardPicker
+                  searchPlaceholder="Search tables..."
+                  options={tableCardOptions}
+                  value={tableName}
+                  onChange={handleTableChange}
+                  disabled={!namespace}
+                  loading={loadingTables}
+                  emptyLabel={
+                    !namespace
+                      ? 'Select a namespace first.'
+                      : tableOptions.length === 0
+                        ? 'No tables found.'
+                        : 'No tables match your search.'
+                  }
+                />
+              )}
             </div>
-          </div>
+          )}
 
-          <div className="space-y-2">
-            <Label htmlFor="pipeline-desc">Description</Label>
-            <Textarea
-              id="pipeline-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional description..."
-              className="min-h-[60px]"
-            />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="pipeline-ns">Namespace</Label>
-              <Select
-                value={namespace || undefined}
-                onValueChange={handleNamespaceChange}
-                disabled={!catalogReady || loadingNamespaces}
-                required
+          {/* 4 · Tasks — sequential flow; click a task to configure it below */}
+          {wizardStep === 1 && (
+          <div className="space-y-3">
+            <Label className="text-sm font-semibold">Tasks</Label>
+            <div className="rounded-lg border border-border/60 bg-muted/10 p-3">
+            <div className="flex items-stretch gap-0 overflow-x-auto pb-1">
+              {tasks.map((task, idx) => {
+                const meta = getActionMeta(task.actionType);
+                const Icon = meta.icon;
+                const isSelected = selectedTask?.key === task.key;
+                const paramCount = Object.keys(cleanRewriteParams(task.parameters)).length;
+                return (
+                  <React.Fragment key={task.key}>
+                    {idx > 0 && (
+                      <div className="flex items-center mx-2">
+                        <div className="h-0.5 w-8 bg-muted-foreground/40" />
+                        <svg width="8" height="12" viewBox="0 0 6 10" fill="none" className="-ml-px text-muted-foreground/50">
+                          <path d="M1 1L5 5L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTaskKey(task.key)}
+                      className={cn(
+                        'relative flex min-h-[74px] min-w-[175px] shrink-0 items-center gap-3 rounded-md border bg-card px-3 py-3 text-left transition-all',
+                        'hover:ring-2 hover:ring-primary/30',
+                        meta.borderColor,
+                        isSelected && 'ring-2 ring-indigo-500/60 ring-offset-1 ring-offset-background',
+                      )}
+                    >
+                      <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-md border', meta.bgColor, meta.borderColor)}>
+                        <Icon className={cn('h-5 w-5', meta.color)} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{task.name || `Step ${idx + 1}`}</p>
+                        <p className="truncate text-[10px] text-muted-foreground">#{idx + 1} · {meta.label}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          {paramCount} param{paramCount === 1 ? '' : 's'}
+                        </p>
+                      </div>
+                    </button>
+                  </React.Fragment>
+                );
+              })}
+              <div className="flex items-center mx-2">
+                <div className="h-0.5 w-8 bg-muted-foreground/40" />
+                <svg width="8" height="12" viewBox="0 0 6 10" fill="none" className="-ml-px text-muted-foreground/50">
+                  <path d="M1 1L5 5L1 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+              <button
+                type="button"
+                onClick={addTask}
+                className="flex min-w-[120px] shrink-0 items-center justify-center gap-1.5 rounded-md border border-dashed border-border/70 bg-card/50 px-4 text-sm font-medium text-muted-foreground transition-all hover:border-indigo-500/40 hover:bg-indigo-500/[0.04] hover:text-foreground"
               >
-                <SelectTrigger id="pipeline-ns" className="w-full">
-                  <SelectValue
-                    placeholder={
-                      !catalogReady
-                        ? 'Select a catalog first'
-                        : loadingNamespaces
-                          ? 'Loading namespaces…'
-                          : namespaceOptions.length === 0
-                            ? 'No namespaces'
-                            : 'Select namespace'
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {namespaceOptions.map((ns) => (
-                    <SelectItem key={ns} value={ns}>
-                      {ns}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <Plus className="h-4 w-4" />
+                Add task
+              </button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="pipeline-table">Table</Label>
-              <Select
-                value={tableName || undefined}
-                onValueChange={setTableName}
-                disabled={!namespace || loadingTables}
-                required
-              >
-                <SelectTrigger id="pipeline-table" className="w-full">
-                  <SelectValue
-                    placeholder={
-                      !namespace
-                        ? 'Select a namespace first'
-                        : loadingTables
-                          ? 'Loading tables…'
-                          : tableOptions.length === 0
-                            ? 'No tables'
-                            : 'Select table'
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {tableOptions.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {t}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
-          </div>
 
+            {selectedTask && (
+              <div className="space-y-3 rounded-lg border border-border/60 bg-muted/10 p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Step {tasks.findIndex((t) => t.key === selectedTask.key) + 1} · configuration
+                  </span>
+                  {tasks.length > 1 && (
+                    <Button type="button" variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => removeTask(selectedTask.key)}>
+                      <X className="mr-1 h-3.5 w-3.5" /> Remove
+                    </Button>
+                  )}
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Task Name</Label>
+                    <Input
+                      value={selectedTask.name}
+                      onChange={(e) => updateTask(selectedTask.key, { name: e.target.value })}
+                      placeholder={getActionMeta(selectedTask.actionType).label}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Action Type</Label>
+                    <Select
+                      value={selectedTask.actionType}
+                      onValueChange={(v) => {
+                        const currentDefaultName = getActionMeta(selectedTask.actionType).label;
+                        const shouldRename =
+                          !selectedTask.name.trim() || selectedTask.name === currentDefaultName;
+                        updateTask(selectedTask.key, {
+                          actionType: v,
+                          name: shouldRename ? getActionMeta(v).label : selectedTask.name,
+                          parameters: v === 'REWRITE_DATA_FILES' ? { [ENGINE_PARAM]: 'java' } : {},
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {ACTION_TYPES.map((at) => {
+                          const atMeta = getActionMeta(at);
+                          const AtIcon = atMeta.icon;
+                          return (
+                            <SelectItem key={at} value={at}>
+                              <AtIcon className={cn('mr-1.5 inline h-3.5 w-3.5', atMeta.color)} />
+                              {atMeta.label}
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {selectedTask.actionType === 'REWRITE_DATA_FILES' && (
+                  <div className="grid gap-2 rounded-md border border-border/50 bg-background/40 p-2">
+                    <Label className="text-xs">Execution engine</Label>
+                    <Select value={taskEngine(selectedTask)} onValueChange={(v) => setTaskEngine(selectedTask, v as 'java' | 'spark')}>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="java">Java API (small tables, in-process)</SelectItem>
+                        <SelectItem value="spark">Spark (large / merge-on-read)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {taskEngine(selectedTask) === 'spark' && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Spark target</Label>
+                        <Select value={taskSparkCluster(selectedTask)} onValueChange={(v) => setTaskSparkCluster(selectedTask, v)}>
+                          <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="local">Local (local[*])</SelectItem>
+                            {sparkClusters?.map((c) => (
+                              <SelectItem key={c.id} value={String(c.id)}>{c.name} <span className="text-muted-foreground">({c.masterUrl})</span></SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {selectedTask.actionType === 'REWRITE_DATA_FILES' ? (
+                  <RewriteOptionsEditor
+                    params={Object.fromEntries(Object.entries(selectedTask.parameters).filter(([k]) => k !== ENGINE_PARAM && k !== SPARK_CLUSTER_PARAM))}
+                    onChange={(next) => {
+                      const reserved: Record<string, string> = {};
+                      if (selectedTask.parameters[ENGINE_PARAM]) reserved[ENGINE_PARAM] = selectedTask.parameters[ENGINE_PARAM];
+                      if (selectedTask.parameters[SPARK_CLUSTER_PARAM]) reserved[SPARK_CLUSTER_PARAM] = selectedTask.parameters[SPARK_CLUSTER_PARAM];
+                      updateTask(selectedTask.key, { parameters: { ...reserved, ...next } });
+                    }}
+                    engine={taskEngine(selectedTask)}
+                  />
+                ) : (ACTION_PARAMS[selectedTask.actionType] ?? []).length > 0 ? (
+                  <div className="grid gap-2 sm:grid-cols-2 rounded-md border border-border/50 bg-background/40 p-2">
+                    <span className="sm:col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Parameters</span>
+                    {ACTION_PARAMS[selectedTask.actionType].map((field) => (
+                      <div key={field.key} className="space-y-1">
+                        <Label className="text-xs">{field.label}</Label>
+                        <Input type="number" min={0} value={paramDisplayValue(selectedTask.parameters, field)} onChange={(e) => updateParam(selectedTask, field, e.target.value)} placeholder={field.placeholder} />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] italic text-muted-foreground">No parameters for this action.</p>
+                )}
+              </div>
+            )}
+          </div>
+          )}
+
+          {/* 5 · Schedule */}
+          {wizardStep === 2 && (
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="pipeline-cron">Cron Expression</Label>
-              <Input
-                id="pipeline-cron"
-                value={cronExpression}
-                onChange={(e) => setCronExpression(e.target.value)}
-                placeholder="0 2 * * * (optional)"
-                className="font-mono"
-              />
+              <Input id="pipeline-cron" value={cronExpression} onChange={(e) => setCronExpression(e.target.value)} placeholder="0 2 * * * (optional)" className="font-mono" />
             </div>
             <div className="flex items-end gap-3 pb-1">
               <div className="flex items-center gap-2">
-                <Switch
-                  id="pipeline-enabled"
-                  checked={enabled}
-                  onCheckedChange={setEnabled}
-                />
+                <Switch id="pipeline-enabled" checked={enabled} onCheckedChange={setEnabled} />
                 <Label htmlFor="pipeline-enabled">Enabled</Label>
               </div>
             </div>
           </div>
+          )}
 
-          {/* Tasks */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold">Tasks</Label>
-              <Button type="button" variant="outline" size="sm" onClick={addTask}>
-                <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Task
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              {tasks.map((task, idx) => {
-                const meta = getActionMeta(task.actionType);
-                const Icon = meta.icon;
-                return (
-                  <div
-                    key={task.key}
-                    className="relative"
-                  >
-                    {/* Connecting line */}
-                    {idx > 0 && (
-                      <div className="absolute left-5 -top-2 w-px h-2 bg-muted-foreground/20" />
-                    )}
-                    <div
-                      className={cn(
-                        'flex items-start gap-3 rounded-lg border p-3 transition-all',
-                        meta.bgColor,
-                        meta.borderColor,
-                      )}
-                    >
-                      {/* Step number */}
-                      <div className="flex flex-col items-center gap-1 pt-1">
-                        <div className={cn(
-                          'flex h-7 w-7 items-center justify-center rounded-full border-2 text-xs font-bold',
-                          meta.borderColor,
-                          meta.color,
-                        )}>
-                          {idx + 1}
-                        </div>
-                        <Icon className={cn('h-4 w-4', meta.color)} />
-                      </div>
-
-                      {/* Fields */}
-                      <div className="flex-1 space-y-2">
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          <div className="space-y-1">
-                            <Label className="text-xs">Task Name</Label>
-                            <Input
-                              value={task.name}
-                              onChange={(e) => updateTask(task.key, { name: e.target.value })}
-                              placeholder={`Step ${idx + 1}`}
-                              required
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Action Type</Label>
-                            <Select
-                              value={task.actionType}
-                              onValueChange={(v) =>
-                                updateTask(task.key, {
-                                  actionType: v,
-                                  parameters: v === 'REWRITE_DATA_FILES' ? { [ENGINE_PARAM]: 'java' } : {},
-                                })
-                              }
-                            >
-                              <SelectTrigger className="w-full">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {ACTION_TYPES.map((at) => {
-                                  const atMeta = getActionMeta(at);
-                                  const AtIcon = atMeta.icon;
-                                  return (
-                                    <SelectItem key={at} value={at}>
-                                      <AtIcon className={cn('h-3.5 w-3.5 mr-1.5 inline', atMeta.color)} />
-                                      {atMeta.label}
-                                    </SelectItem>
-                                  );
-                                })}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-
-                        {task.actionType === 'REWRITE_DATA_FILES' && (
-                          <div className="grid gap-2 sm:grid-cols-2 rounded-md border border-border/50 bg-background/40 p-2">
-                            <span className="sm:col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Engine</span>
-                            <div className="space-y-1 sm:col-span-2">
-                              <Label className="text-xs">Execution engine</Label>
-                              <Select
-                                value={taskEngine(task)}
-                                onValueChange={(v) => setTaskEngine(task, v as 'java' | 'spark')}
-                              >
-                                <SelectTrigger className="w-full">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="java">Java API (small tables, in-process)</SelectItem>
-                                  <SelectItem value="spark">Spark (large / merge-on-read)</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            {taskEngine(task) === 'spark' && (
-                              <div className="space-y-1 sm:col-span-2">
-                                <Label className="text-xs">Spark target</Label>
-                                <Select
-                                  value={taskSparkCluster(task)}
-                                  onValueChange={(v) => setTaskSparkCluster(task, v)}
-                                >
-                                  <SelectTrigger className="w-full">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="local">Local (local[*])</SelectItem>
-                                    {sparkClusters?.map((c) => (
-                                      <SelectItem key={c.id} value={String(c.id)}>
-                                        {c.name}{' '}
-                                        <span className="text-muted-foreground">({c.masterUrl})</span>
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <p className="text-[11px] text-muted-foreground">
-                                  Configure clusters in Settings · Spark must be installed for execution.
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Parameters (same component as the Maintenance tab) */}
-                        {task.actionType === 'REWRITE_DATA_FILES' ? (
-                          <RewriteOptionsEditor
-                            params={Object.fromEntries(Object.entries(task.parameters).filter(([k]) => k !== ENGINE_PARAM && k !== SPARK_CLUSTER_PARAM))}
-                            onChange={(next) => {
-                              const reserved: Record<string, string> = {};
-                              if (task.parameters[ENGINE_PARAM]) reserved[ENGINE_PARAM] = task.parameters[ENGINE_PARAM];
-                              if (task.parameters[SPARK_CLUSTER_PARAM]) reserved[SPARK_CLUSTER_PARAM] = task.parameters[SPARK_CLUSTER_PARAM];
-                              updateTask(task.key, { parameters: { ...reserved, ...next } });
-                            }}
-                            engine={taskEngine(task)}
-                          />
-                        ) : (ACTION_PARAMS[task.actionType] ?? []).length > 0 ? (
-                          <div className="grid gap-2 sm:grid-cols-2 rounded-md border border-border/50 bg-background/40 p-2">
-                            <span className="sm:col-span-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Parameters</span>
-                            {ACTION_PARAMS[task.actionType].map((field) => (
-                              <div key={field.key} className="space-y-1">
-                                <Label className="text-xs">{field.label}</Label>
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  value={paramDisplayValue(task.parameters, field)}
-                                  onChange={(e) => updateParam(task, field, e.target.value)}
-                                  placeholder={field.placeholder}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-[11px] text-muted-foreground italic">No parameters for this action.</p>
-                        )}
-                      </div>
-
-                      {/* Remove */}
-                      {tasks.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="shrink-0 mt-1 text-muted-foreground hover:text-destructive"
-                          onClick={() => removeTask(task.key)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+          {/* 6 · Name & description */}
+          {wizardStep === 3 && (
+          <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="pipeline-name">Pipeline Name</Label>
+            <Input id="pipeline-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="daily-maintenance" required />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="pipeline-desc">Description</Label>
+            <Textarea id="pipeline-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional description..." className="min-h-[60px]" />
+          </div>
+          </div>
+          )}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex items-center justify-between gap-2 border-t border-border/50 pt-4">
             <Button type="button" variant="outline" onClick={() => navigate('/pipelines')}>Cancel</Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isEdit ? 'Update Pipeline' : 'Create Pipeline'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" onClick={goBack} disabled={wizardStep === 0}>
+                Back
+              </Button>
+              {wizardStep < WIZARD_STEPS.length - 1 ? (
+                <Button type="button" onClick={goNext} disabled={!canContinueStep()}>
+                  Next
+                </Button>
+              ) : (
+                <Button type="submit" disabled={isPending || !canSubmit}>
+                  {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isEdit ? 'Update Pipeline' : 'Create Pipeline'}
+                </Button>
+              )}
+            </div>
           </div>
         </form>
         </CardContent>
