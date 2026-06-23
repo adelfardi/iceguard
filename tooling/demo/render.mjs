@@ -16,15 +16,20 @@ if (!webm || !existsSync(webm)) {
 }
 const run = (args) => execFileSync(ffmpeg, args, { stdio: 'inherit' });
 
+// Playback speed-up applied to both outputs (trims dead time, keeps the file light).
+const SPEED = Number(process.env.DEMO_SPEED || 1.3);
+const speed = `setpts=PTS/${SPEED}`;
+
 // MP4 (web-friendly h264)
 run(['-y', '-i', webm, '-movflags', '+faststart', '-pix_fmt', 'yuv420p',
-  '-vf', 'scale=1280:-2', '-c:v', 'libx264', '-crf', '24', path.join(DOCS, 'demo.mp4')]);
+  '-vf', `${speed},scale=1280:-2`, '-c:v', 'libx264', '-crf', '24', path.join(DOCS, 'demo.mp4')]);
 
-// GIF (2-pass palette, 960px, 12fps)
+// GIF (2-pass palette — 760px, 8fps, sped up: keeps it light for the README)
+const gifVf = `${speed},fps=8,scale=760:-1:flags=lanczos`;
 const pal = path.join(OUT, 'palette.png');
-run(['-y', '-i', webm, '-vf', 'fps=10,scale=880:-1:flags=lanczos,palettegen=stats_mode=diff', pal]);
+run(['-y', '-i', webm, '-vf', `${gifVf},palettegen=stats_mode=diff`, pal]);
 run(['-y', '-i', webm, '-i', pal, '-lavfi',
-  'fps=10,scale=880:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3',
+  `${gifVf}[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=3`,
   path.join(DOCS, 'demo.gif')]);
 
 console.log('Wrote docs/demo.gif and docs/demo.mp4');

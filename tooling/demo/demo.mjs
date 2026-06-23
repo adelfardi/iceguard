@@ -107,15 +107,19 @@ async function run() {
   // Timeline → hover an item to surface its tooltip, then click it to open the details popup
   await hoverClick(page.getByRole('tab', { name: /Timeline/i }), 1300);
   try {
-    // Pick a data-marker dot in the chart area — not a thin connector stem and not the
-    // right-hand filter legend (those are ~40px dots near x≈1016 and would toggle a filter).
+    // Pick a GREEN data-marker dot (append / rewrite_data_files share #10b981 = rgb(16,185,129)),
+    // so we open the popup on an append/rewrite — never an expire-snapshot (violet) or the
+    // right-hand filter legend dots.
     const items = page.locator('.vis-item');
     const count = await items.count();
     let box = null;
     for (let i = 0; i < count; i++) {
-      const bb = await items.nth(i).boundingBox();
-      if (bb && bb.width >= 10 && bb.width <= 60 && bb.height >= 10 && bb.height <= 60
-          && bb.x > 200 && bb.x < 900 && bb.y > 200 && bb.y < 470) { box = bb; break; }
+      const it = items.nth(i);
+      const bb = await it.boundingBox();
+      if (!bb || bb.width < 10 || bb.width > 60 || bb.height < 10 || bb.height > 60) continue;
+      if (!(bb.x > 200 && bb.x < 900 && bb.y > 200 && bb.y < 470)) continue;
+      const bg = await it.evaluate((n) => getComputedStyle(n).backgroundColor).catch(() => '');
+      if (bg === 'rgb(16, 185, 129)') { box = bb; break; }
     }
     if (box) {
       const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
@@ -137,14 +141,28 @@ async function run() {
   await page.mouse.wheel(0, -2400);
   await sleep(600);
 
-  // Maintenance → open the "Rewrite Data Files" dialog (popup)
+  // Maintenance → run "Rewrite Data Files" on Spark and showcase the result + logs panel
   await hoverClick(page.getByRole('tab', { name: /Maintenance/i }), 1400);
   const rewriteRun = page.locator('div.group')
     .filter({ has: page.getByRole('heading', { name: 'Rewrite Data Files' }) })
     .getByRole('button', { name: 'Run' });
   await hoverClick(rewriteRun, 600);
-  await page.getByRole('dialog').waitFor({ state: 'visible' }).catch(() => {});
-  await sleep(2600);                 // showcase the popup
+  const dlg = page.getByRole('dialog');
+  await dlg.waitFor({ state: 'visible' }).catch(() => {});
+  await sleep(1200);
+  // Switch the engine to Spark (real compaction → produces logs)
+  try {
+    await hoverClick(dlg.getByRole('combobox').first(), 500);
+    await hoverClick(page.getByRole('option', { name: /Spark/i }), 800);
+    await sleep(700);
+  } catch (e) { console.warn('engine select skipped:', e.message); }
+  // Run it, then wait for the in-dialog result/logs panel (Spark local can take a while)
+  const runBtn = dlg.getByRole('button', { name: /Run Spark Compaction|Run Compaction/i });
+  await hoverClick(runBtn, 600);
+  await dlg.getByText(/Success|Failed/i).first().waitFor({ state: 'visible', timeout: 120000 }).catch(() => {});
+  await sleep(2200);
+  await page.mouse.wheel(0, 400);    // scroll within the dialog to reveal the logs
+  await sleep(2800);                 // dwell on result + logs
   await page.keyboard.press('Escape');
   await sleep(900);
 
@@ -155,9 +173,11 @@ async function run() {
   await goto('/catalogs');
   await page.mouse.move(640, 360, { steps: 15 });
   await sleep(1500);
-  // Filter to prod + pre-prod (hides the external catalog).
-  await hoverClick(page.getByRole('button', { name: 'prod', exact: true }), 800);
-  await hoverClick(page.getByRole('button', { name: 'pre-prod', exact: true }), 1800);
+  // Filter by tags (hides the non-matching catalogs).
+  try {
+    await hoverClick(page.getByRole('button', { name: 'prod', exact: true }), 800);
+    await hoverClick(page.getByRole('button', { name: 'critical', exact: true }), 1800);
+  } catch (e) { console.warn('tag filter step skipped:', e.message); }
 
   // ── 3. Catalog switcher → namespaces → quick create table ──
   try {
@@ -197,12 +217,14 @@ async function run() {
   // ── 5. Pipelines — list, then a pipeline's runs ──
   await goto('/pipelines');
   await sleep(1800);
-  // Open the pipeline's runs
-  await hoverClick(page.getByRole('link', { name: /View Runs/i }), 1800);
-  // Expand the latest run to reveal its task flow
-  const firstRun = page.locator('button').filter({ hasText: /SUCCESS|RUNNING|FAILED/i }).first();
-  await hoverClick(firstRun, 2400);
-  await sleep(800);
+  try {
+    // Open the pipeline's runs
+    await hoverClick(page.getByRole('link', { name: /View Runs/i }), 1800);
+    // Expand the latest run to reveal its task flow
+    const firstRun = page.locator('button').filter({ hasText: /SUCCESS|RUNNING|FAILED/i }).first();
+    await hoverClick(firstRun, 2400);
+    await sleep(800);
+  } catch (e) { console.warn('pipeline runs step skipped:', e.message); }
 
   await page.close();
   await context.close();

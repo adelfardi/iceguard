@@ -32,3 +32,7 @@ Thumbs.db
 # ─── Build / misc ───
 *.tgz
 ice.png.bak
+
+# ─── Rendered demo (published as GitHub release assets, not committed) ───
+docs/demo.gif
+docs/demo.mp4
