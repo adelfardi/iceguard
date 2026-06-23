@@ -288,6 +288,47 @@ public class TableService {
                 .toList();
     }
 
+    /**
+     * Off-peak detection from the available snapshots only: bucket commit timestamps by hour-of-day
+     * (UTC) and find the quietest contiguous window. Reuses {@link #listSnapshots} so it benefits
+     * from the Nessie commit-log reconstruction.
+     */
+    public CommitActivityResponse getCommitActivity(Long catalogId, String namespace, String tableName) {
+        int[] hourly = new int[24];
+        long total = 0;
+        for (SnapshotResponse s : listSnapshots(catalogId, namespace, tableName)) {
+            if (s.timestamp() == null) continue;
+            hourly[s.timestamp().atZone(ZoneOffset.UTC).getHour()]++;
+            total++;
+        }
+
+        Integer quietestHour = null;
+        Integer windowStart = null;
+        int windowHours = 4;
+        if (total > 0) {
+            int minHour = 0;
+            for (int h = 1; h < 24; h++) {
+                if (hourly[h] < hourly[minHour]) minHour = h;
+            }
+            quietestHour = minHour;
+
+            int bestSum = Integer.MAX_VALUE;
+            int bestStart = 0;
+            for (int start = 0; start < 24; start++) {
+                int sum = 0;
+                for (int k = 0; k < windowHours; k++) sum += hourly[(start + k) % 24];
+                if (sum < bestSum) {
+                    bestSum = sum;
+                    bestStart = start;
+                }
+            }
+            windowStart = bestStart;
+        }
+
+        boolean enough = total >= 12;
+        return new CommitActivityResponse(hourly, total, quietestHour, windowStart, windowHours, enough);
+    }
+
     /** Driven by the stored vendor, not re-guessed from the name/URI. */
     private static boolean isNessie(CatalogConfig cfg) {
         return cfg.vendor == CatalogConfig.Vendor.NESSIE;

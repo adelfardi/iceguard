@@ -253,6 +253,15 @@ export interface TableStatistics {
   importantProperties: Record<string, string>;
 }
 
+export interface CommitActivity {
+  hourlyUtc: number[];
+  totalCommits: number;
+  quietestHourUtc: number | null;
+  suggestedWindowStartUtc: number | null;
+  suggestedWindowHours: number;
+  enoughData: boolean;
+}
+
 export interface SchemaUpdateRequest {
   addColumns?: AddColumn[];
   dropColumns?: string[];

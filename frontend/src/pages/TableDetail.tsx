@@ -780,6 +780,8 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
           </CardContent>
         </Card>
       </div>
+
+      <CommitActivityCard catalogId={catalogId} namespace={namespace} table={table} />
     </div>
   );
 }
@@ -1448,6 +1450,55 @@ function MaintenanceSection({
       </div>
       <div className={cn('grid gap-4', compact ? 'max-w-xl' : 'md:grid-cols-2')}>{children}</div>
     </section>
+  );
+}
+
+function CommitActivityCard({ catalogId, namespace, table }: { catalogId: number; namespace: string; table: string }) {
+  const { data } = useQuery({
+    queryKey: ['commit-activity', catalogId, namespace, table],
+    queryFn: () => tableApi.commitActivity(catalogId, namespace, table),
+  });
+  if (!data) return null;
+  const max = Math.max(1, ...data.hourlyUtc);
+  const fmt = (h: number) => `${String(h).padStart(2, '0')}:00`;
+  const start = data.suggestedWindowStartUtc;
+  const end = start != null ? (start + data.suggestedWindowHours) % 24 : null;
+  const inWindow = (h: number) => {
+    if (start == null) return false;
+    for (let k = 0; k < data.suggestedWindowHours; k++) if ((start + k) % 24 === h) return true;
+    return false;
+  };
+  return (
+    <Card className="glass shadow-card">
+      <CardContent className="space-y-3 p-5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold"><Clock3 className="h-4 w-4 text-indigo-400" /> Commit activity · off-peak</h3>
+            <p className="text-xs text-muted-foreground">Write commits by hour of day (UTC), from the table's snapshots.</p>
+          </div>
+          {!data.enoughData && (
+            <Badge variant="outline" className="h-4 shrink-0 px-1.5 text-[10px] font-normal">Limited data</Badge>
+          )}
+        </div>
+        <div className="flex h-20 items-end gap-0.5">
+          {data.hourlyUtc.map((c, h) => (
+            <div key={h} title={`${fmt(h)} UTC · ${c} commit${c === 1 ? '' : 's'}`}
+              className={cn('flex-1 rounded-sm transition-colors', inWindow(h) ? 'bg-emerald-500/70' : 'bg-muted-foreground/25')}
+              style={{ height: c === 0 ? '2px' : `${Math.max(6, (c / max) * 100)}%` }} />
+          ))}
+        </div>
+        <div className="flex justify-between text-[10px] text-muted-foreground">
+          <span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>23:00</span>
+        </div>
+        {start != null ? (
+          <p className="text-xs text-muted-foreground">
+            Suggested off-peak window: <span className="font-medium text-emerald-400">{fmt(start)}–{fmt(end!)} UTC</span> · {data.totalCommits} commit{data.totalCommits === 1 ? '' : 's'} analysed
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">No commits to analyse yet.</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

@@ -32,6 +32,7 @@ import type {
   SnapshotInfo,
   TableDetail,
   TableStatistics,
+  CommitActivity,
   StorageOverview,
   StorageFiles,
   PartitionPage,
@@ -148,6 +149,12 @@ export const tableApi = {
     api
       .get<TableStatistics>(
         `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/statistics`,
+      )
+      .then((r) => r.data),
+  commitActivity: (catalogId: number, namespace: string, table: string) =>
+    api
+      .get<CommitActivity>(
+        `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/commit-activity`,
       )
       .then((r) => r.data),
   rename: (catalogId: number, namespace: string, table: string, data: RenameTableRequest) =>

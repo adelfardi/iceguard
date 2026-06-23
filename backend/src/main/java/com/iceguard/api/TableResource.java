@@ -3,6 +3,7 @@ package com.iceguard.api;
 import com.iceguard.dto.request.CreateTableRequest;
 import com.iceguard.dto.request.PartitionSpecUpdateRequest;
 import com.iceguard.dto.request.SchemaUpdateRequest;
+import com.iceguard.dto.response.CommitActivityResponse;
 import com.iceguard.dto.response.DataSampleResponse;
 import com.iceguard.dto.response.PartitionPageResponse;
 import com.iceguard.dto.response.SchemaHistoryResponse;
@@ -134,6 +135,14 @@ public class TableResource {
                                                   @PathParam("namespace") String namespace,
                                                   @PathParam("table") String table) {
         return tableService.getStatistics(catalogId, namespace, table);
+    }
+
+    @GET
+    @Path("/{table}/commit-activity")
+    public CommitActivityResponse getCommitActivity(@PathParam("catalogId") Long catalogId,
+                                                    @PathParam("namespace") String namespace,
+                                                    @PathParam("table") String table) {
+        return tableService.getCommitActivity(catalogId, namespace, table);
     }
 
     @GET
