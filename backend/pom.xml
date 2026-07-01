@@ -15,7 +15,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
         <quarkus.platform.group-id>io.quarkus.platform</quarkus.platform.group-id>
-        <quarkus.platform.version>3.17.8</quarkus.platform.version>
+        <quarkus.platform.version>3.37.1</quarkus.platform.version>
         <surefire-plugin.version>3.5.6</surefire-plugin.version>
         <iceberg.version>1.10.0</iceberg.version>
     </properties>
@@ -117,24 +117,24 @@
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>s3</artifactId>
-            <version>2.46.15</version>
+            <version>2.46.20</version>
         </dependency>
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>sts</artifactId>
-            <version>2.46.15</version>
+            <version>2.46.20</version>
         </dependency>
         <!-- iceberg-aws's AwsClientFactories needs the SDK's Apache HTTP client and KMS
              modules; AWS SDK 2.46 no longer pulls them transitively, so declare them. -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>apache-client</artifactId>
-            <version>2.46.15</version>
+            <version>2.46.20</version>
         </dependency>
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>kms</artifactId>
-            <version>2.46.15</version>
+            <version>2.46.20</version>
         </dependency>
 
         <!-- Hadoop (required by Iceberg for FileIO) -->
@@ -247,7 +247,7 @@
             <plugin>
                 <groupId>com.diffplug.spotless</groupId>
                 <artifactId>spotless-maven-plugin</artifactId>
-                <version>2.44.3</version>
+                <version>2.46.1</version>
                 <configuration>
                     <java>
                         <palantirJavaFormat/>
