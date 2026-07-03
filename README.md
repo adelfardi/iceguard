@@ -87,6 +87,9 @@ the type is auto-detected from the catalog name/URI:
 Catalog API — browse works today; writes depend on the endpoint (Databricks managed-Iceberg
 read/write is in preview, requires `EXTERNAL USE SCHEMA` + a PAT/OAuth token).</sub>
 
+Nessie has a few specifics (snapshot history rebuilt from its commit log, S3 region requirement,
+flaky-remote handling) — see **[docs/NESSIE.md](docs/NESSIE.md)**.
+
 ## Stack
 
 | Layer | Tech |

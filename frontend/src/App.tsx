@@ -4,6 +4,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { Dashboard } from '@/pages/Dashboard';
 import { Catalogs } from '@/pages/Catalogs';
 import { CreateCatalog } from '@/pages/CreateCatalog';
+import { EditCatalog } from '@/pages/EditCatalog';
 import { CatalogDetail } from '@/pages/CatalogDetail';
 import { CreateTable } from '@/pages/CreateTable';
 import { TableDetail } from '@/pages/TableDetail';
@@ -30,6 +31,7 @@ const router = createBrowserRouter([
       { index: true, element: <Dashboard /> },
       { path: 'catalogs', element: <Catalogs /> },
       { path: 'catalogs/new', element: <CreateCatalog /> },
+      { path: 'catalogs/:catalogId/edit', element: <EditCatalog /> },
       { path: 'catalogs/:catalogId', element: <CatalogDetail /> },
       { path: 'catalogs/:catalogId/namespaces/:namespace/tables/new', element: <CreateTable /> },
       { path: 'catalogs/:catalogId/namespaces/:namespace/tables/:table', element: <TableDetail /> },

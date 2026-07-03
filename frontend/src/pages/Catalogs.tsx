@@ -9,7 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { CatalogForm } from '@/components/catalog/CatalogForm';
 import { Input } from '@/components/ui/input';
 import {
   AlertDialog,
@@ -27,28 +26,17 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useCatalogStore } from '@/hooks/useCatalogStore';
 import { guessCatalogType, CATALOG_TYPE_META } from '@/types';
-import type { CreateCatalogRequest, CatalogConfig } from '@/types';
+import type { CatalogConfig } from '@/types';
 import { cn } from '@/lib/utils';
 import { tagColorStyle } from '@/lib/tagColor';
 
 export function Catalogs() {
   const queryClient = useQueryClient();
-  const [editing, setEditing] = useState<CatalogConfig | null>(null);
   const { activeCatalogId, setActiveCatalog } = useCatalogStore();
 
   const { data: catalogs, isLoading } = useQuery({
     queryKey: ['catalogs'],
     queryFn: catalogApi.list,
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: CreateCatalogRequest }) => catalogApi.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['catalogs'] });
-      setEditing(null);
-      toast.success('Catalog updated');
-    },
-    onError: (err: Error) => toast.error(`Failed to update catalog: ${err.message}`),
   });
 
   const deleteMutation = useMutation({
@@ -147,23 +135,6 @@ export function Catalogs() {
           )}
         </div>
       )}
-
-      {/* Edit dialog */}
-      <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Catalog</DialogTitle>
-          </DialogHeader>
-          {editing && (
-            <CatalogForm
-              mode="edit"
-              initial={editing}
-              pending={updateMutation.isPending}
-              onSubmit={(req) => updateMutation.mutate({ id: editing.id, data: req })}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
 
       {isLoading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -269,13 +240,13 @@ export function Catalogs() {
                     <Link to={`/catalogs/${catalog.id}`} className="text-xs text-muted-foreground hover:text-foreground transition-colors px-1.5 py-1">
                       Browse
                     </Link>
-                    <button
+                    <Link
+                      to={`/catalogs/${catalog.id}/edit`}
                       className="text-xs text-muted-foreground hover:text-foreground transition-colors px-1.5 py-1"
-                      onClick={() => setEditing(catalog)}
                       title="Edit catalog"
                     >
                       <Pencil className="inline h-3 w-3 mr-0.5" /> Edit
-                    </button>
+                    </Link>
                     <button
                       className="text-xs text-red-400/60 hover:text-red-400 transition-colors px-1.5 py-1 ml-auto"
                       onClick={() => setDeleteTarget(catalog)}

@@ -151,6 +151,7 @@ export interface PartitionStorage {
   maxFileSizeBytes: number;
   avgFileSizeBytes: number;
   recordCount: number;
+  smallFileCount: number;
 }
 
 export interface StorageFiles {
