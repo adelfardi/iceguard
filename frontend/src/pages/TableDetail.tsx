@@ -2192,7 +2192,7 @@ const SORT_OPTIONS = [
 ] as const;
 type SortKey = typeof SORT_OPTIONS[number]['key'];
 
-const PARTITION_PAGE_SIZE = 25;
+const PARTITION_PAGE_SIZE = 10;
 
 function HealthThresholdsDialog({ thresholds }: { thresholds?: import('@/types').StorageHealthThresholds }) {
   const queryClient = useQueryClient();
@@ -2373,6 +2373,15 @@ function StorageTab({ catalogId, namespace, table }: { catalogId: number; namesp
   const maxPartitionSize = Math.max(1, data.maxPartitionSizeBytes);
 
   const partitions = partPage?.partitions ?? [];
+  // Per-partition health, reusing the global storage-health logic.
+  const partitionTone = (p: typeof partitions[number]): HealthTone =>
+    computeStorageHealthStatus({
+      totalDataFiles: p.dataFileCount,
+      totalDeleteFiles: p.deleteFileCount,
+      smallFileCount: p.smallFileCount,
+      avgFileSizeBytes: p.avgFileSizeBytes,
+      targetFileSizeBytes: data.targetFileSizeBytes,
+    } as import('@/types').StorageOverview, t).tone;
   const total = partPage?.total ?? 0;
   const from = total === 0 ? 0 : page * PARTITION_PAGE_SIZE + 1;
   const to = Math.min(total, (page + 1) * PARTITION_PAGE_SIZE);
@@ -2475,6 +2484,7 @@ function StorageTab({ catalogId, namespace, table }: { catalogId: number; namesp
           ) : (
             <UiTable>
               <TableHeader><TableRow>
+                <TableHead className="w-14">Health</TableHead>
                 <TableHead>Partition</TableHead>
                 <TableHead className="text-right">Files</TableHead>
                 <TableHead className="text-right">Delete</TableHead>
@@ -2486,6 +2496,18 @@ function StorageTab({ catalogId, namespace, table }: { catalogId: number; namesp
               <TableBody>
                 {partitions.map((p) => (
                   <TableRow key={p.path || '__root__'} className="cursor-pointer hover:bg-muted/40" onClick={() => setSelected(p)}>
+                    <TableCell>
+                      {(() => {
+                        const tone = partitionTone(p);
+                        return (
+                          <span
+                            title={tone === 'bad' ? 'Needs attention' : tone === 'warn' ? 'Could be optimized' : 'Healthy'}
+                            className={cn('inline-block h-2.5 w-2.5 rounded-full',
+                              tone === 'bad' ? 'bg-rose-500' : tone === 'warn' ? 'bg-amber-500' : 'bg-emerald-500')}
+                          />
+                        );
+                      })()}
+                    </TableCell>
                     <TableCell>
                       {p.values.length > 0 ? (
                         <span className="flex flex-wrap gap-1">{p.values.map((v) => <Badge key={v.field} variant="secondary" className="font-mono text-[11px]"><span className="text-muted-foreground">{v.field}=</span>{v.value}</Badge>)}</span>

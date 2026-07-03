@@ -32,6 +32,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
@@ -264,15 +265,29 @@ public class TableService {
         }
     }
 
+    private record CachedSnapshots(List<SnapshotResponse> snapshots, long expiresAt) {}
+    private static final long NESSIE_SNAPSHOT_TTL_MS = 120_000;
+    private final Map<String, CachedSnapshots> nessieSnapshotCache = new ConcurrentHashMap<>();
+
     public List<SnapshotResponse> listSnapshots(Long catalogId, String namespace, String tableName) {
-        // Nessie exposes only the current Iceberg snapshot; reconstruct the full
-        // history from its commit log so the client sees it transparently.
+        // Nessie exposes only the current Iceberg snapshot; reconstruct the full history from its
+        // commit log so the client sees it transparently. The remote commit-log call can fail
+        // intermittently — cache the last good reconstruction and serve it on transient failures
+        // instead of flickering back to the single Iceberg snapshot.
         CatalogConfig cfg = CatalogConfig.findById(catalogId);
         if (cfg != null && isNessie(cfg)) {
+            String key = catalogId + " " + namespace + " " + tableName;
+            long now = System.currentTimeMillis();
             try {
-                return nessieSnapshots(cfg, namespace, tableName);
+                List<SnapshotResponse> snaps = nessieSnapshots(cfg, namespace, tableName);
+                nessieSnapshotCache.put(key, new CachedSnapshots(snaps, now + NESSIE_SNAPSHOT_TTL_MS));
+                return snaps;
             } catch (Exception e) {
-                // Commit log unavailable — fall back to the single Iceberg snapshot below.
+                CachedSnapshots cached = nessieSnapshotCache.get(key);
+                if (cached != null && cached.expiresAt() > now) {
+                    return cached.snapshots();
+                }
+                // No recent reconstruction — fall back to the single Iceberg snapshot below.
             }
         }
         Table table = loadTable(catalogId, namespace, tableName);

@@ -100,6 +100,10 @@ function buildCrumbs(
         label: ctx.catalogName ?? `Catalog ${segments[1]}`,
       });
 
+      if (segments[2] === 'edit') {
+        crumbs.push({ path: pathname, label: 'Edit' });
+      }
+
       if (segments[2] === 'namespaces' && segments[3]) {
         crumbs.push({
           path: `${catalogPath}/namespaces/${segments[3]}`,

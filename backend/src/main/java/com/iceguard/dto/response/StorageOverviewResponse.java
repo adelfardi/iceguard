@@ -40,7 +40,8 @@ public record StorageOverviewResponse(
             long minFileSizeBytes,
             long maxFileSizeBytes,
             long avgFileSizeBytes,
-            long recordCount
+            long recordCount,
+            long smallFileCount
     ) {}
 
     public record PartitionValue(String field, String value) {}

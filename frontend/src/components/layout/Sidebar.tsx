@@ -11,6 +11,7 @@ import {
   FolderOpen,
   Table2,
   Database,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -19,7 +20,6 @@ import { namespaceApi, alertApi } from '@/api/client';
 import { CatalogSwitcher } from './CatalogSwitcher';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -171,10 +171,8 @@ function CatalogTree({ catalogId, onNavigate }: { catalogId: number; onNavigate?
         Explorer
       </div>
       {isLoading ? (
-        <div className="space-y-1 p-1">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-7 w-full" />
-          ))}
+        <div className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading namespaces…
         </div>
       ) : namespaces?.length === 0 ? (
         <p className="px-3 py-2 text-xs text-muted-foreground">No namespaces</p>
@@ -212,7 +210,7 @@ function NamespaceNode({
   currentPath: string;
   onNavigate?: () => void;
 }) {
-  const { data: tables } = useQuery({
+  const { data: tables, isLoading } = useQuery({
     queryKey: ['tables', catalogId, namespace],
     queryFn: () => namespaceApi.listTables(catalogId, namespace),
     enabled: expanded,
@@ -226,15 +224,22 @@ function NamespaceNode({
       >
         <FolderOpen className={cn('h-3.5 w-3.5', expanded ? 'text-yellow-500' : 'text-muted-foreground')} />
         <span className="truncate flex-1 text-left">{namespace}</span>
-        {tables && (
+        {expanded && isLoading ? (
+          <Loader2 className="h-3 w-3 shrink-0 animate-spin text-muted-foreground" />
+        ) : tables ? (
           <Badge variant="secondary" className="h-4 px-1 text-[10px]">
             {tables.length}
           </Badge>
-        )}
+        ) : null}
       </button>
-      {expanded && tables && (
+      {expanded && (
         <div className="ml-4 space-y-0.5 border-l pl-2">
-          {tables.map((table) => {
+          {isLoading && (
+            <div className="flex items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" /> Loading tables…
+            </div>
+          )}
+          {tables?.map((table) => {
             const tablePath = `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}`;
             const isActive = currentPath === tablePath;
             return (
@@ -254,7 +259,7 @@ function NamespaceNode({
               </Link>
             );
           })}
-          {tables.length === 0 && (
+          {!isLoading && tables?.length === 0 && (
             <p className="px-2 py-1 text-xs text-muted-foreground">No tables</p>
           )}
         </div>
