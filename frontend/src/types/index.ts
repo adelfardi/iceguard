@@ -583,3 +583,24 @@ export interface AlertEventResponse {
   triggeredAt: string;
   resolvedAt: string | null;
 }
+
+export interface DashboardWidget {
+  id: number;
+  title: string;
+  widgetType: string;
+  catalogId: number | null;
+  namespace: string | null;
+  tableName: string | null;
+  params: Record<string, string>;
+  orderIndex: number;
+  createdAt: string;
+}
+
+export interface CreateDashboardWidgetRequest {
+  title: string;
+  widgetType: string;
+  catalogId?: number;
+  namespace?: string;
+  tableName?: string;
+  params?: Record<string, string>;
+}

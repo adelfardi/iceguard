@@ -1,5 +1,7 @@
 import axios from 'axios';
 import type {
+  DashboardWidget,
+  CreateDashboardWidgetRequest,
   AlertEventResponse,
   AlertRuleResponse,
   CatalogConfig,
@@ -393,4 +395,12 @@ export const pipelineApi = {
     api.post<PipelineRunResponse>(`/pipelines/runs/${runId}/rerun`).then((r) => r.data),
   retryTask: (runId: number, taskRunId: number) =>
     api.post<PipelineRunResponse>(`/pipelines/runs/${runId}/tasks/${taskRunId}/retry`).then((r) => r.data),
+};
+
+export const dashboardWidgetApi = {
+  list: () => api.get<DashboardWidget[]>('/dashboard-widgets').then((r) => r.data),
+  create: (data: CreateDashboardWidgetRequest) =>
+    api.post<DashboardWidget>('/dashboard-widgets', data).then((r) => r.data),
+  delete: (id: number) => api.delete(`/dashboard-widgets/${id}`),
+  reorder: (ids: number[]) => api.put('/dashboard-widgets/reorder', ids),
 };

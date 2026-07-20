@@ -36,6 +36,7 @@ import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import type { MaintenanceRequest, SnapshotInfo, AlertRuleResponse, ExecutionInfo } from '@/types';
 import { RewriteOptionsEditor, cleanRewriteParams } from '@/components/maintenance/RewriteOptions';
+import { PinToDashboardButton } from '@/components/dashboard/widgets';
 import { AlertRuleForm } from './Alerts';
 import { TimelineTab } from './table-detail/TimelineTab';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -827,10 +828,11 @@ function MaintenanceReliabilityCard({ catalogId, namespace, table }: { catalogId
 
   return (
     <Card className="glass shadow-card">
-      <CardHeader className="pb-2">
+      <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 space-y-0">
         <CardTitle className="text-base flex items-center gap-2">
           <Activity className="h-4 w-4 text-amber-500" /> Maintenance reliability
         </CardTitle>
+        <PinToDashboardButton widgetType="maintenance-reliability" defaultTitle={`${table} — reliability`} catalogId={catalogId} namespace={namespace} tableName={table} />
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-3 gap-4">
@@ -2709,7 +2711,10 @@ function StorageTab({ catalogId, namespace, table }: { catalogId: number; namesp
           Live state at snapshot <span className="font-mono text-foreground">{!data.currentSnapshotId || data.currentSnapshotId === '-1' ? '—' : data.currentSnapshotId}</span>
           {data.partitioned ? <> · partitioned by <span className="text-cyan-400">{data.partitionFields.join(', ')}</span></> : ' · unpartitioned'}
         </p>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>{isFetching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />} Refresh</Button>
+        <div className="flex items-center gap-2">
+          <PinToDashboardButton widgetType="storage-overview" defaultTitle={`${table} — storage`} catalogId={catalogId} namespace={namespace} tableName={table} size="sm" variant="outline" />
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>{isFetching ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-1 h-4 w-4" />} Refresh</Button>
+        </div>
       </div>
 
       {/* Stat table */}
@@ -2725,7 +2730,7 @@ function StorageTab({ catalogId, namespace, table }: { catalogId: number; namesp
       {/* Insights + histogram */}
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><BarChart3 className="h-4 w-4 text-cyan-500" /> File size distribution</CardTitle></CardHeader>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 space-y-0"><CardTitle className="text-base flex items-center gap-2"><BarChart3 className="h-4 w-4 text-cyan-500" /> File size distribution</CardTitle><PinToDashboardButton widgetType="file-histogram" defaultTitle={`${table} — file sizes`} catalogId={catalogId} namespace={namespace} tableName={table} /></CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={histogram} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
@@ -3029,6 +3034,7 @@ function RecentlyActivePartitionsCard({ catalogId, namespace, table }: { catalog
             last
             <Input type="number" min={1} value={hours} onChange={(e) => setHours(Math.max(1, Math.floor(Number(e.target.value) || 1)))} className="h-7 w-16 text-xs" />
             hours
+            <PinToDashboardButton widgetType="hot-partitions" defaultTitle={`${table} — hot partitions (${hours}h)`} catalogId={catalogId} namespace={namespace} tableName={table} params={{ windowHours: String(hours) }} />
           </span>
         </CardTitle>
       </CardHeader>
