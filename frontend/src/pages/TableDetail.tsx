@@ -29,7 +29,7 @@ import {
   Bell, AlertTriangle, CheckCircle2, Mail, History, Activity,
   Layers, ChevronRight, ArrowLeft, Search, Gauge, Settings2,
   Network, GitCompare, ArrowRight, ArrowUp, ArrowDown, Minus, X,
-  Repeat, Zap, Paintbrush, Undo2, Eraser, Scissors,
+  Repeat, Zap, Paintbrush, Undo2, Eraser, Scissors, CheckSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -44,7 +44,7 @@ import { AlertEventsList } from '@/components/alerts/AlertEventsList';
 import { getActionMeta } from '@/components/pipeline/PipelineFlow';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer,
+  ResponsiveContainer, LineChart, Line, Legend,
 } from 'recharts';
 
 const ICEBERG_TYPES = [
@@ -144,6 +144,7 @@ function SnapshotOperationBadge({ operation }: { operation: string }) {
 
 const DATA_PAGE_SIZE = 10;
 const SNAPSHOT_PAGE_SIZE = 10;
+const STORAGE_FILES_PAGE_SIZE = 25;
 
 export function TableDetail() {
   const { catalogId, namespace, table } = useParams<{ catalogId: string; namespace: string; table: string }>();
@@ -380,7 +381,7 @@ export function TableDetail() {
           <TabsTrigger value="snapshots"><Camera className="mr-1.5 h-4 w-4 text-violet-500" /> Snapshots</TabsTrigger>
           <TabsTrigger value="data"><TableIcon className="mr-1.5 h-4 w-4 text-emerald-500" /> Data</TabsTrigger>
           <TabsTrigger value="timeline"><History className="mr-1.5 h-4 w-4" /> Timeline</TabsTrigger>
-          <TabsTrigger value="lineage"><Network className="mr-1.5 h-4 w-4 text-fuchsia-500" /> Lineage</TabsTrigger>
+          <TabsTrigger value="lineage"><Network className="mr-1.5 h-4 w-4 text-fuchsia-500" /> Evolution</TabsTrigger>
           <TabsTrigger value="maintenance"><Wrench className="mr-1.5 h-4 w-4" /> Maintenance</TabsTrigger>
           <TabsTrigger value="alerts">
             <span className="relative mr-1.5">
@@ -782,7 +783,101 @@ function OverviewTab({ stats, snapshots, catalogId, namespace, table }: {
       </div>
 
       <CommitActivityCard catalogId={catalogId} namespace={namespace} table={table} />
+
+      <MaintenanceReliabilityCard catalogId={catalogId} namespace={namespace} table={table} />
     </div>
+  );
+}
+
+/** Failure-rate dashboard: successful maintenance commits vs failed runs for this table. */
+function MaintenanceReliabilityCard({ catalogId, namespace, table }: { catalogId: number; namespace: string; table: string }) {
+  const { data: succ } = useQuery({
+    queryKey: ['exec-count', catalogId, namespace, table, 'SUCCESS'],
+    queryFn: () => executionApi.search({ catalogId, namespace, table, status: 'SUCCESS', size: 1, page: 0 }),
+  });
+  const { data: fail } = useQuery({
+    queryKey: ['exec-count', catalogId, namespace, table, 'FAILED'],
+    queryFn: () => executionApi.search({ catalogId, namespace, table, status: 'FAILED', size: 1, page: 0 }),
+  });
+  const { data: execList } = useQuery({
+    queryKey: ['exec-series', catalogId, namespace, table],
+    queryFn: () => executionApi.search({ catalogId, namespace, table, size: 200, page: 0 }),
+  });
+  const commits = succ?.total ?? 0;
+  const failed = fail?.total ?? 0;
+  const total = commits + failed;
+  const rate = total > 0 ? Math.round((failed / total) * 100) : 0;
+  const tone = rate >= 30 ? 'text-rose-400' : rate >= 10 ? 'text-amber-400' : 'text-emerald-400';
+
+  // Daily series: commits (successful) vs failed operations over time.
+  const series = React.useMemo(() => {
+    const byDay = new Map<string, { commits: number; failed: number }>();
+    for (const e of execList?.items ?? []) {
+      const day = (e.startedAt ?? '').slice(0, 10);
+      if (!day) continue;
+      const b = byDay.get(day) ?? { commits: 0, failed: 0 };
+      if (e.status === 'SUCCESS') b.commits++;
+      else if (e.status === 'FAILED') b.failed++;
+      byDay.set(day, b);
+    }
+    return [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, v]) => ({ label: day.slice(5), commits: v.commits, failed: v.failed }));
+  }, [execList]);
+
+  return (
+    <Card className="glass shadow-card">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Activity className="h-4 w-4 text-amber-500" /> Maintenance reliability
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <p className="text-xs text-muted-foreground">Failure rate</p>
+            <p className={cn('text-2xl font-bold tabular-nums', tone)}>{rate}%</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Commits (success)</p>
+            <p className="text-2xl font-bold tabular-nums text-emerald-400">{commits.toLocaleString()}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Failed</p>
+            <p className="text-2xl font-bold tabular-nums text-rose-400">{failed.toLocaleString()}</p>
+          </div>
+        </div>
+        {total > 0 && (
+          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted" title={`${failed} failed of ${total}`}>
+            <div className="h-full bg-rose-500 transition-all" style={{ width: `${rate}%` }} />
+          </div>
+        )}
+        <p className="mt-2 text-xs text-muted-foreground">
+          {total > 0 ? `${total.toLocaleString()} maintenance run(s) recorded for this table.` : 'No maintenance runs recorded yet for this table.'}
+        </p>
+
+        {series.length > 0 && (
+          <div className="mt-4 border-t pt-4">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">Commits vs failed operations over time</p>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={series} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                <Tooltip
+                  contentStyle={{ background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, fontSize: 12 }}
+                  labelStyle={{ color: '#e2e8f0', fontWeight: 600 }}
+                  itemStyle={{ color: '#e2e8f0' }}
+                />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line type="monotone" dataKey="commits" name="Commits" stroke="#10b981" strokeWidth={2} dot={{ r: 2 }} />
+                <Line type="monotone" dataKey="failed" name="Failed" stroke="#f43f5e" strokeWidth={2} dot={{ r: 2 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2183,6 +2278,115 @@ function MetricDeltaCard({ metric }: { metric: import('@/types').MetricDelta }) 
 /* ═══════════════════════ Storage Tab ═══════════════════════ */
 
 type PartitionStorage = import('@/types').PartitionStorage;
+type PartitionFieldInfo = import('@/types').PartitionFieldInfo;
+type ColumnInfo = import('@/types').ColumnInfo;
+
+/** Pick the input widget for a partition key from its transform (and source column type for identity). */
+type PartFieldKind = 'date' | 'month' | 'year' | 'hour' | 'number' | 'text';
+function partitionFieldKind(pf: PartitionFieldInfo, columns: ColumnInfo[]): PartFieldKind {
+  const tf = (pf.transform || '').toLowerCase();
+  if (tf === 'year') return 'year';
+  if (tf === 'month') return 'month';
+  if (tf === 'day' || tf === 'date') return 'date';
+  if (tf === 'hour') return 'hour';
+  if (tf.startsWith('bucket') || tf.startsWith('truncate')) return 'number';
+  // identity / void → infer from the source column's type
+  const t = (columns.find((c) => c.name === pf.sourceColumn)?.type ?? '').toLowerCase();
+  if (t === 'date') return 'date';
+  if (t.startsWith('timestamp')) return 'hour';
+  if (['int', 'long', 'integer', 'float', 'double'].includes(t) || t.startsWith('decimal')) return 'number';
+  return 'text';
+}
+/** Format a raw input value into the string as it appears in the Iceberg partition path. */
+function partitionTokenValue(kind: PartFieldKind, raw: string): string {
+  const v = raw.trim();
+  if (!v) return '';
+  if (kind === 'hour') {
+    // datetime-local "YYYY-MM-DDTHH:mm" → path form "YYYY-MM-DD-HH"
+    const m = v.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})/);
+    return m ? `${m[1]}-${m[2]}` : v;
+  }
+  return v; // date "YYYY-MM-DD", month "YYYY-MM", year/number/text as-is
+}
+function partFieldInputType(kind: PartFieldKind): string {
+  switch (kind) {
+    case 'date': return 'date';
+    case 'month': return 'month';
+    case 'hour': return 'datetime-local';
+    case 'number':
+    case 'year': return 'number';
+    default: return 'text';
+  }
+}
+
+/* ── Partition → SQL WHERE, for partition-scoped rewrite_data_files (Spark).
+   Supports identity + temporal transforms (day/date/month/year/hour) as ranges;
+   returns null for anything not expressible as a predicate (bucket/truncate/void). ── */
+const pad2 = (n: number) => String(n).padStart(2, '0');
+// Iceberg's rewrite_data_files `where` parser expects string/date literals in DOUBLE quotes
+// (e.g. where => 'created_at >= "2026-02-01"'). Single-quoted literals get stripped and misparsed.
+const sqlStr = (v: string) => `"${v.replace(/"/g, '\\"')}"`;
+function nextDayISO(d: string): string {
+  const dt = new Date(`${d}T00:00:00Z`);
+  dt.setUTCDate(dt.getUTCDate() + 1);
+  return dt.toISOString().slice(0, 10);
+}
+function isNumericType(t: string): boolean {
+  return ['int', 'integer', 'long', 'float', 'double'].includes(t) || t.startsWith('decimal');
+}
+function fieldPredicate(pf: PartitionFieldInfo, columns: ColumnInfo[], value: string): string | null {
+  const tf = (pf.transform || '').toLowerCase();
+  const col = pf.sourceColumn;
+  const colType = (columns.find((c) => c.name === pf.sourceColumn)?.type ?? '').toLowerCase();
+  if (tf === 'identity' || tf === '') {
+    const lit = isNumericType(colType) || colType === 'boolean' ? value : sqlStr(value);
+    return `${col} = ${lit}`;
+  }
+  if (tf === 'day' || tf === 'date') {
+    return `${col} >= ${sqlStr(value)} AND ${col} < ${sqlStr(nextDayISO(value))}`;
+  }
+  if (tf === 'month') {
+    const [y, m] = value.split('-').map(Number);
+    if (!y || !m) return null;
+    const end = m === 12 ? `${y + 1}-01-01` : `${y}-${pad2(m + 1)}-01`;
+    return `${col} >= ${sqlStr(`${value}-01`)} AND ${col} < ${sqlStr(end)}`;
+  }
+  if (tf === 'year') {
+    const y = Number(value);
+    if (!y) return null;
+    return `${col} >= ${sqlStr(`${y}-01-01`)} AND ${col} < ${sqlStr(`${y + 1}-01-01`)}`;
+  }
+  if (tf === 'hour') {
+    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const start = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4]));
+    const e = new Date(start.getTime() + 3600_000);
+    const fmt = (d: Date) => `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())} ${pad2(d.getUTCHours())}:00:00`;
+    return `${col} >= ${sqlStr(fmt(start))} AND ${col} < ${sqlStr(fmt(e))}`;
+  }
+  return null; // bucket / truncate / void — not expressible as a WHERE
+}
+function partitionPredicate(part: PartitionStorage, partFields: PartitionFieldInfo[], columns: ColumnInfo[]): string | null {
+  const conds: string[] = [];
+  for (const { field, value } of part.values) {
+    const pf = partFields.find((f) => f.name === field);
+    if (!pf) return null;
+    const c = fieldPredicate(pf, columns, value);
+    if (c == null) return null;
+    conds.push(c);
+  }
+  return conds.length ? conds.join(' AND ') : null;
+}
+/** OR of each selected partition's predicate; null if any partition is not scopable. */
+function buildRewriteWhere(parts: PartitionStorage[], partFields: PartitionFieldInfo[], columns: ColumnInfo[]): string | null {
+  const preds: string[] = [];
+  for (const part of parts) {
+    const p = partitionPredicate(part, partFields, columns);
+    if (p == null) return null;
+    preds.push(`(${p})`);
+  }
+  return preds.length ? preds.join(' OR ') : null;
+}
 
 const SORT_OPTIONS = [
   { key: 'size', label: 'Size' },
@@ -2331,26 +2535,131 @@ function StorageTab({ catalogId, namespace, table }: { catalogId: number; namesp
     queryKey: ['storage-health-thresholds'],
     queryFn: storageHealthApi.get,
   });
+  const { data: tableDetail } = useQuery({
+    queryKey: ['table', catalogId, namespace, table],
+    queryFn: () => tableApi.get(catalogId, namespace, table),
+  });
   const [selected, setSelected] = useState<PartitionStorage | null>(null);
   const [query, setQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('size');
+  const [keyFilters, setKeyFilters] = useState<Record<string, string>>({});
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [page, setPage] = useState(0);
 
-  // Debounce the search box and reset to the first page on change.
+  const partFields = tableDetail?.partitionSpec ?? [];
+  const columns = tableDetail?.schema.columns ?? [];
+  const fieldKind = React.useCallback((pf: PartitionFieldInfo) => partitionFieldKind(pf, columns), [columns]);
+
+  // Combine the free-text search with typed per-key filters into whitespace AND tokens.
+  const combinedSearch = React.useMemo(() => {
+    const keyTokens = partFields.map((pf) => {
+      const v = partitionTokenValue(fieldKind(pf), keyFilters[pf.name] ?? '');
+      return v ? `${pf.name}=${v}` : '';
+    }).filter(Boolean);
+    return [query.trim(), ...keyTokens].filter(Boolean).join(' ');
+  }, [query, keyFilters, partFields, fieldKind]);
+
+  // Debounce and reset to the first page on change.
   React.useEffect(() => {
-    const t = setTimeout(() => { setDebouncedQuery(query); setPage(0); }, 300);
+    const t = setTimeout(() => { setDebouncedSearch(combinedSearch); setPage(0); }, 300);
     return () => clearTimeout(t);
-  }, [query]);
+  }, [combinedSearch]);
 
   const { data: partPage, isFetching: partFetching } = useQuery({
-    queryKey: ['storage-partitions', catalogId, namespace, table, page, sortKey, sortDir, debouncedQuery],
+    queryKey: ['storage-partitions', catalogId, namespace, table, page, sortKey, sortDir, debouncedSearch],
     queryFn: () => tableApi.getStoragePartitions(catalogId, namespace, table, {
-      offset: page * PARTITION_PAGE_SIZE, limit: PARTITION_PAGE_SIZE, sort: sortKey, dir: sortDir, search: debouncedQuery,
+      offset: page * PARTITION_PAGE_SIZE, limit: PARTITION_PAGE_SIZE, sort: sortKey, dir: sortDir, search: debouncedSearch,
     }),
     placeholderData: keepPreviousData,
   });
+
+  // ── Multi-select + partition-scoped rewrite_data_files ──
+  const queryClient = useQueryClient();
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedMap, setSelectedMap] = useState<Map<string, PartitionStorage>>(new Map());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkCluster, setBulkCluster] = useState('local');
+  const [bulkParams, setBulkParams] = useState<Record<string, string>>({});
+  const [bulkMode, setBulkMode] = useState<'whole' | 'per-partition'>('per-partition');
+  const [progress, setProgress] = useState<Record<string, { status: 'pending' | 'running' | 'success' | 'failed'; error?: string }>>({});
+  const [running, setRunning] = useState(false);
+  const { data: sparkClusters } = useQuery({ queryKey: ['spark-clusters'], queryFn: sparkClusterApi.list });
+
+  const selectedParts = React.useMemo(() => [...selectedMap.values()], [selectedMap]);
+  const rewriteWhere = React.useMemo(() => buildRewriteWhere(selectedParts, partFields, columns), [selectedParts, partFields, columns]);
+  const selectionScopable = selectedParts.length > 0 && rewriteWhere != null;
+
+  const toggleSelect = (p: PartitionStorage) => setSelectedMap((m) => {
+    const next = new Map(m);
+    const key = p.path || '__root__';
+    if (next.has(key)) next.delete(key); else next.set(key, p);
+    return next;
+  });
+  const clearSelection = () => setSelectedMap(new Map());
+
+  const invalidateStorage = () => {
+    queryClient.invalidateQueries({ queryKey: ['storage', catalogId, namespace, table] });
+    queryClient.invalidateQueries({ queryKey: ['storage-partitions', catalogId, namespace, table] });
+  };
+
+  // "Whole" mode: one Spark job with the OR-ed WHERE across all selected partitions.
+  const rewriteBulkM = useMutation({
+    mutationFn: (req: MaintenanceRequest) => maintenanceApi.rewriteDataFiles(catalogId, namespace, table, req),
+    onSuccess: (ex) => {
+      if (ex && ex.status === 'FAILED') toast.error(`Rewrite data files: ${ex.errorMessage ?? 'failed'}`);
+      else toast.success('Rewrite data files: success');
+      setBulkOpen(false);
+      clearSelection();
+      setSelectMode(false);
+      invalidateStorage();
+    },
+    onError: (err: Error) => toast.error(`Rewrite data files: ${apiErrorMessage(err)}`),
+  });
+
+  const runWhole = () => {
+    const req: MaintenanceRequest = { engine: 'spark' };
+    if (bulkCluster !== 'local') req.sparkClusterId = Number(bulkCluster);
+    const params = cleanRewriteParams(bulkParams);
+    if (rewriteWhere) params.where = rewriteWhere; // partition-derived WHERE wins
+    req.parameters = params;
+    rewriteBulkM.mutate(req);
+  };
+
+  // "Partition by partition" mode: one Spark job per partition, sequential, with live progress.
+  const runPerPartition = async () => {
+    const parts = selectedParts;
+    setRunning(true);
+    setProgress(Object.fromEntries(parts.map((p) => [p.path || '__root__', { status: 'pending' as const }])));
+    const baseParams = cleanRewriteParams(bulkParams);
+    let ok = 0; let ko = 0;
+    for (const p of parts) {
+      const key = p.path || '__root__';
+      const pred = partitionPredicate(p, partFields, columns);
+      if (!pred) {
+        ko++;
+        setProgress((pr) => ({ ...pr, [key]: { status: 'failed', error: 'not scopable (bucket/truncate)' } }));
+        continue;
+      }
+      setProgress((pr) => ({ ...pr, [key]: { status: 'running' } }));
+      const req: MaintenanceRequest = { engine: 'spark', parameters: { ...baseParams, where: `(${pred})` } };
+      if (bulkCluster !== 'local') req.sparkClusterId = Number(bulkCluster);
+      try {
+        const ex = await maintenanceApi.rewriteDataFiles(catalogId, namespace, table, req);
+        if (ex && ex.status === 'FAILED') { ko++; setProgress((pr) => ({ ...pr, [key]: { status: 'failed', error: ex.errorMessage ?? 'failed' } })); }
+        else { ok++; setProgress((pr) => ({ ...pr, [key]: { status: 'success' } })); }
+      } catch (e) {
+        ko++;
+        setProgress((pr) => ({ ...pr, [key]: { status: 'failed', error: apiErrorMessage(e as Error) } }));
+      }
+      invalidateStorage();
+    }
+    setRunning(false);
+    if (ko === 0) toast.success(`Rewrite finished — ${ok} partition(s) ok`);
+    else toast.error(`Rewrite finished — ${ok} ok, ${ko} failed`);
+  };
+
+  const doneCount = Object.values(progress).filter((s) => s.status === 'success' || s.status === 'failed').length;
 
   if (isLoading) {
     return <div className="space-y-4"><div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-20" />)}</div><Skeleton className="h-64" /></div>;
@@ -2475,15 +2784,161 @@ function StorageTab({ catalogId, namespace, table }: { catalogId: number; namesp
                 <SelectContent>{SORT_OPTIONS.map((o) => <SelectItem key={o.key} value={o.key}>Sort: {o.label}</SelectItem>)}</SelectContent>
               </Select>
               <Button variant="ghost" size="sm" className="h-8 px-2" onClick={toggleDir} title="Toggle direction">{sortDir === 'asc' ? '↑' : '↓'}</Button>
+              {data.partitioned && (
+                <Button variant={selectMode ? 'default' : 'outline'} size="sm" className="h-8"
+                  onClick={() => { setSelectMode((s) => !s); if (selectMode) clearSelection(); }}>
+                  <CheckSquare className="mr-1 h-3.5 w-3.5" /> {selectMode ? 'Done' : 'Select'}
+                </Button>
+              )}
             </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {/* Bulk action toolbar (shown once partitions are selected) */}
+          {selectedMap.size > 0 && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-indigo-500/30 bg-indigo-500/[0.06] px-3 py-2">
+              <span className="text-sm font-medium">{selectedMap.size} selected</span>
+              <div className="ml-auto flex items-center gap-2">
+                <Button size="sm" className="h-8" disabled={!selectionScopable} onClick={() => setBulkOpen(true)}
+                  title={selectionScopable ? undefined : 'Some selected partitions use a bucket/truncate transform that cannot be scoped'}>
+                  <Wrench className="mr-1 h-3.5 w-3.5" /> Rewrite data files
+                </Button>
+                <Button variant="ghost" size="sm" className="h-8" onClick={clearSelection}><X className="mr-1 h-3.5 w-3.5" /> Clear</Button>
+              </div>
+              {!selectionScopable && (
+                <p className="w-full text-[11px] text-amber-400">Some selected partitions use a non-scopable transform (bucket/truncate) — deselect them to enable the rewrite.</p>
+              )}
+            </div>
+          )}
+
+          <Dialog open={bulkOpen} onOpenChange={(o) => { if (!running) { setBulkOpen(o); if (o) setProgress({}); } }}>
+            <DialogContent className="!w-[96vw] !max-w-[96vw] max-h-[92vh] overflow-y-auto">
+              <DialogHeader><DialogTitle>Rewrite data files — {selectedMap.size} partition(s)</DialogTitle></DialogHeader>
+              <div className="grid gap-4 md:grid-cols-2">
+                {/* Left: config */}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Execution mode</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => setBulkMode('per-partition')} disabled={running}
+                        className={cn('rounded-md border p-2 text-left text-xs transition-colors', bulkMode === 'per-partition' ? 'border-indigo-500/60 bg-indigo-500/[0.08]' : 'border-border/60 hover:border-indigo-500/40')}>
+                        <span className="font-medium">Partition by partition</span>
+                        <span className="mt-0.5 block text-[11px] text-muted-foreground">One Spark job per partition, with live progress.</span>
+                      </button>
+                      <button type="button" onClick={() => setBulkMode('whole')} disabled={running}
+                        className={cn('rounded-md border p-2 text-left text-xs transition-colors', bulkMode === 'whole' ? 'border-indigo-500/60 bg-indigo-500/[0.08]' : 'border-border/60 hover:border-indigo-500/40')}>
+                        <span className="font-medium">Whole (single job)</span>
+                        <span className="mt-0.5 block text-[11px] text-muted-foreground">One Spark job over all partitions (OR-ed WHERE).</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Spark target</Label>
+                    <Select value={bulkCluster} onValueChange={setBulkCluster} disabled={running}>
+                      <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="local">Local (local[*])</SelectItem>
+                        {sparkClusters?.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name} <span className="text-muted-foreground">({c.masterUrl})</span></SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Partition-scoped rewrite runs on Spark — the WHERE clause is Spark-only.</p>
+                  </div>
+                  <RewriteOptionsEditor params={bulkParams} onChange={setBulkParams} engine="spark" hiddenKeys={['where']} />
+                </div>
+
+                {/* Right: preview (whole) or per-partition progress */}
+                <div className="space-y-3">
+                  {bulkMode === 'whole' ? (
+                    <div className="space-y-1">
+                      <Label>WHERE preview <span className="text-muted-foreground">(from the selected partitions)</span></Label>
+                      <pre className="max-h-[60vh] overflow-auto rounded-md border bg-muted/40 p-2 text-xs font-mono whitespace-pre-wrap break-all">{rewriteWhere ?? '—'}</pre>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label>Partitions</Label>
+                        {(running || doneCount > 0) && (
+                          <span className="text-xs text-muted-foreground">{doneCount}/{selectedParts.length}</span>
+                        )}
+                      </div>
+                      {(running || doneCount > 0) && (
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                          <div className="h-full bg-indigo-500 transition-all" style={{ width: `${selectedParts.length ? (doneCount / selectedParts.length) * 100 : 0}%` }} />
+                        </div>
+                      )}
+                      <div className="max-h-[52vh] space-y-1 overflow-auto rounded-md border p-2">
+                        {selectedParts.map((p) => {
+                          const key = p.path || '__root__';
+                          const st = progress[key]?.status;
+                          const err = progress[key]?.error;
+                          const label = p.values.length > 0 ? p.values.map((v) => `${v.field}=${v.value}`).join('/') : '(unpartitioned)';
+                          return (
+                            <div key={key} className="flex items-center gap-2 text-xs">
+                              {st === 'running' ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-400" />
+                                : st === 'success' ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                                : st === 'failed' ? <X className="h-3.5 w-3.5 shrink-0 text-rose-400" />
+                                : <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40" />}
+                              <span className="min-w-0 flex-1 truncate font-mono" title={label}>{label}</span>
+                              {err && <span className="max-w-[45%] truncate text-rose-400" title={err}>{err}</span>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-2 flex items-center justify-end gap-2">
+                {(running || doneCount > 0) && bulkMode === 'per-partition' && (
+                  <Button variant="ghost" onClick={() => { setBulkOpen(false); if (doneCount > 0 && !running) { clearSelection(); setSelectMode(false); } }} disabled={running}>Close</Button>
+                )}
+                <Button
+                  disabled={!selectionScopable || running || rewriteBulkM.isPending}
+                  onClick={() => (bulkMode === 'whole' ? runWhole() : runPerPartition())}
+                  className="gradient-primary text-white border-0 hover:opacity-90"
+                >
+                  {(running || rewriteBulkM.isPending) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {bulkMode === 'whole'
+                    ? `Run one job on ${selectedMap.size} partition(s)`
+                    : running ? `Running ${doneCount}/${selectedParts.length}…` : `Run ${selectedMap.size} partition(s) sequentially`}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Typed per-key filters */}
+          {data.partitioned && partFields.length > 0 && (
+            <div className="mb-3 flex flex-wrap items-end gap-2 border-b pb-3">
+              {partFields.map((pf) => {
+                const kind = fieldKind(pf);
+                const val = keyFilters[pf.name] ?? '';
+                return (
+                  <div key={pf.name} className="space-y-1">
+                    <label className="block text-[10px] font-mono uppercase tracking-wide text-muted-foreground">{pf.name}</label>
+                    <Input
+                      type={partFieldInputType(kind)}
+                      value={val}
+                      onChange={(e) => setKeyFilters((s) => ({ ...s, [pf.name]: e.target.value }))}
+                      placeholder={kind === 'year' ? 'YYYY' : kind === 'text' ? 'value' : undefined}
+                      className="h-8 w-40 text-xs"
+                    />
+                  </div>
+                );
+              })}
+              {(query || Object.values(keyFilters).some(Boolean)) && (
+                <Button variant="ghost" size="sm" className="h-8" onClick={() => { setKeyFilters({}); setQuery(''); }}>
+                  <X className="mr-1 h-3.5 w-3.5" /> Clear
+                </Button>
+              )}
+            </div>
+          )}
           {partitions.length === 0 ? (
-            <p className="text-center text-muted-foreground py-6 text-sm">{debouncedQuery ? 'No partitions match.' : 'No partitions.'}</p>
+            <p className="text-center text-muted-foreground py-6 text-sm">{debouncedSearch ? 'No partitions match.' : 'No partitions.'}</p>
           ) : (
             <UiTable>
               <TableHeader><TableRow>
+                {selectMode && <TableHead className="w-8"></TableHead>}
                 <TableHead className="w-14">Health</TableHead>
                 <TableHead>Partition</TableHead>
                 <TableHead className="text-right">Files</TableHead>
@@ -2495,7 +2950,12 @@ function StorageTab({ catalogId, namespace, table }: { catalogId: number; namesp
               </TableRow></TableHeader>
               <TableBody>
                 {partitions.map((p) => (
-                  <TableRow key={p.path || '__root__'} className="cursor-pointer hover:bg-muted/40" onClick={() => setSelected(p)}>
+                  <TableRow key={p.path || '__root__'} className="cursor-pointer hover:bg-muted/40" onClick={() => (selectMode ? toggleSelect(p) : setSelected(p))}>
+                    {selectMode && (
+                      <TableCell>
+                        <input type="checkbox" className="rounded" readOnly checked={selectedMap.has(p.path || '__root__')} />
+                      </TableCell>
+                    )}
                     <TableCell>
                       {(() => {
                         const tone = partitionTone(p);
@@ -2510,7 +2970,7 @@ function StorageTab({ catalogId, namespace, table }: { catalogId: number; namesp
                     </TableCell>
                     <TableCell>
                       {p.values.length > 0 ? (
-                        <span className="flex flex-wrap gap-1">{p.values.map((v) => <Badge key={v.field} variant="secondary" className="font-mono text-[11px]"><span className="text-muted-foreground">{v.field}=</span>{v.value}</Badge>)}</span>
+                        <span className="flex flex-wrap gap-1">{p.values.map((v) => <Badge key={v.field} variant="secondary" className="font-mono text-[11px]"><span className="text-secondary-foreground/70">{v.field}=</span>{v.value}</Badge>)}</span>
                       ) : <span className="text-muted-foreground italic">(unpartitioned)</span>}
                     </TableCell>
                     <TableCell className="text-right font-medium">{p.dataFileCount.toLocaleString()}</TableCell>
@@ -2545,7 +3005,66 @@ function StorageTab({ catalogId, namespace, table }: { catalogId: number; namesp
           )}
         </CardContent>
       </Card>
+
+      {data.partitioned && <RecentlyActivePartitionsCard catalogId={catalogId} namespace={namespace} table={table} />}
     </div>
+  );
+}
+
+/** Read-only view: partitions touched within the last N hours, with per-partition commit counts. */
+function RecentlyActivePartitionsCard({ catalogId, namespace, table }: { catalogId: number; namespace: string; table: string }) {
+  const [hours, setHours] = useState(6);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['hot-partitions', catalogId, namespace, table, hours],
+    queryFn: () => tableApi.getHotPartitions(catalogId, namespace, table, hours),
+  });
+  const maxCommits = Math.max(1, ...(data ?? []).map((h) => h.commits));
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center justify-between gap-2">
+          <span className="flex items-center gap-2"><Activity className="h-4 w-4 text-rose-500" /> Recently active partitions</span>
+          <span className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
+            last
+            <Input type="number" min={1} value={hours} onChange={(e) => setHours(Math.max(1, Math.floor(Number(e.target.value) || 1)))} className="h-7 w-16 text-xs" />
+            hours
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-7" />)}</div>
+        ) : isError ? (
+          <p className="py-6 text-center text-sm text-rose-400">Could not read snapshot history.</p>
+        ) : !data || data.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">No partitions touched in the last {hours} hour{hours > 1 ? 's' : ''}.</p>
+        ) : (
+          <>
+            <p className="mb-2 text-xs text-muted-foreground">{data.length} partition(s) touched — sorted by commits.</p>
+            <UiTable>
+              <TableHeader><TableRow>
+                <TableHead>Partition</TableHead>
+                <TableHead className="text-right w-40">Commits</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {data.map((h) => (
+                  <TableRow key={h.partition || '__root__'}>
+                    <TableCell className="font-mono text-xs">{h.partition || <span className="italic text-muted-foreground">(unpartitioned)</span>}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="h-1.5 w-20 overflow-hidden rounded-full bg-muted"><div className="h-full bg-rose-500" style={{ width: `${(h.commits / maxCommits) * 100}%` }} /></div>
+                        <span className="tabular-nums w-6 text-right">{h.commits}</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </UiTable>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -2566,6 +3085,41 @@ function PartitionFilesPanel({ catalogId, namespace, table, partition, onBack }:
     queryKey: ['storage-files', catalogId, namespace, table, partition.path],
     queryFn: () => tableApi.getStorageFiles(catalogId, namespace, table, partition.path),
   });
+
+  // Client-side filter + sort + pagination over the full file list (backend returns everything).
+  const [filePage, setFilePage] = useState(0);
+  const [typeFilter, setTypeFilter] = useState<'ALL' | 'DATA' | 'POSITION_DELETES' | 'EQUALITY_DELETES'>('ALL');
+  const [sortKey, setSortKey] = useState<'size' | 'records' | 'name'>('size');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  React.useEffect(() => { setFilePage(0); }, [partition.path, typeFilter, sortKey, sortDir]);
+
+  const allFiles = data?.files ?? [];
+  const view = React.useMemo(() => {
+    const f = typeFilter === 'ALL' ? allFiles : allFiles.filter((x) => x.content === typeFilter);
+    const arr = [...f];
+    arr.sort((a, b) => {
+      const d = sortKey === 'size' ? a.sizeBytes - b.sizeBytes
+        : sortKey === 'records' ? a.recordCount - b.recordCount
+        : a.path.localeCompare(b.path);
+      return sortDir === 'asc' ? d : -d;
+    });
+    return arr;
+  }, [allFiles, typeFilter, sortKey, sortDir]);
+
+  const fileTotal = view.length;
+  const fileMaxPage = Math.max(0, Math.ceil(fileTotal / STORAGE_FILES_PAGE_SIZE) - 1);
+  const filePageClamped = Math.min(filePage, fileMaxPage);
+  const fileFrom = fileTotal === 0 ? 0 : filePageClamped * STORAGE_FILES_PAGE_SIZE + 1;
+  const fileTo = Math.min(fileTotal, (filePageClamped + 1) * STORAGE_FILES_PAGE_SIZE);
+  const pageFiles = view.slice(filePageClamped * STORAGE_FILES_PAGE_SIZE, fileTo);
+
+  const toggleSort = (k: 'size' | 'records') => {
+    if (sortKey === k) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(k); setSortDir('desc'); }
+  };
+  const sortArrow = (k: string) => (sortKey === k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '');
+  const [viewPath, setViewPath] = useState<{ path: string; content: string } | null>(null);
+
   const name = partition.path || '(unpartitioned)';
   const baseName = (path: string) => path.split('/').pop() ?? path;
   const contentBadge = (c: string) =>
@@ -2573,13 +3127,21 @@ function PartitionFilesPanel({ catalogId, namespace, table, partition, onBack }:
       ? <Badge className="bg-cyan-500/10 text-cyan-400 border-0">data</Badge>
       : <Badge className="bg-rose-500/10 text-rose-400 border-0">{c === 'POSITION_DELETES' ? 'pos-delete' : 'eq-delete'}</Badge>;
 
+  // Third drill-down level: partitions → files → file data viewer.
+  if (viewPath) {
+    return (
+      <FileDataPanel catalogId={catalogId} namespace={namespace} table={table} partition={partition}
+        path={viewPath.path} content={viewPath.content} onBack={() => setViewPath(null)} />
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
         <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="mr-1 h-4 w-4" /> Back</Button>
         <span className="flex flex-wrap items-center gap-1.5">
           <Layers className="h-4 w-4 text-violet-500" />
-          {partition.values.length > 0 ? partition.values.map((v) => <Badge key={v.field} variant="secondary" className="font-mono text-[11px]"><span className="text-muted-foreground">{v.field}=</span>{v.value}</Badge>) : <span className="font-medium">{name}</span>}
+          {partition.values.length > 0 ? partition.values.map((v) => <Badge key={v.field} variant="secondary" className="font-mono text-[11px]"><span className="text-secondary-foreground/70">{v.field}=</span>{v.value}</Badge>) : <span className="font-medium">{name}</span>}
         </span>
       </div>
 
@@ -2593,7 +3155,21 @@ function PartitionFilesPanel({ catalogId, namespace, table, partition, onBack }:
       ]} />
 
       <Card>
-        <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4 text-cyan-500" /> Files {data && <Badge className="bg-cyan-500/10 text-cyan-400 border-0">{data.returned}{data.truncated ? '+' : ''}</Badge>}</CardTitle></CardHeader>
+        <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2 space-y-0">
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="h-4 w-4 text-cyan-500" /> Files
+            {data && <Badge className="bg-cyan-500/10 text-cyan-400 border-0">{data.returned}{data.truncated ? '+' : ''}</Badge>}
+          </CardTitle>
+          <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
+            <SelectTrigger className="h-8 w-[160px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All types</SelectItem>
+              <SelectItem value="DATA">Data</SelectItem>
+              <SelectItem value="POSITION_DELETES">Position deletes</SelectItem>
+              <SelectItem value="EQUALITY_DELETES">Equality deletes</SelectItem>
+            </SelectContent>
+          </Select>
+        </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="space-y-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-8" />)}</div>
@@ -2601,22 +3177,141 @@ function PartitionFilesPanel({ catalogId, namespace, table, partition, onBack }:
             <p className="text-center text-muted-foreground py-6 text-sm">No files.</p>
           ) : (
             <>
-              {data.truncated && <p className="text-xs text-amber-400 mb-2">Showing first {data.returned} files.</p>}
-              <ScrollArea className="max-h-[420px]">
+              {data.truncated && <p className="text-xs text-amber-400 mb-2">Showing first {data.returned} files (capped).</p>}
+              <UiTable>
+                <TableHeader><TableRow>
+                  <TableHead>File</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="text-right">
+                    <button type="button" className="ml-auto inline-flex items-center hover:text-foreground" onClick={() => toggleSort('records')}>Records{sortArrow('records')}</button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button type="button" className="ml-auto inline-flex items-center hover:text-foreground" onClick={() => toggleSort('size')}>Size{sortArrow('size')}</button>
+                  </TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {pageFiles.length === 0 ? (
+                    <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6 text-sm">No files match this filter.</TableCell></TableRow>
+                  ) : pageFiles.map((f) => (
+                    <TableRow key={f.path}>
+                      <TableCell className="font-mono text-xs" title={f.path}>
+                        <button className="inline-flex items-center gap-1 text-cyan-400 hover:underline" onClick={() => setViewPath({ path: f.path, content: f.content })}>
+                          <Eye className="h-3 w-3" /> {baseName(f.path)}
+                        </button>
+                      </TableCell>
+                      <TableCell>{contentBadge(f.content)}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{f.recordCount.toLocaleString()}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatBytes(f.sizeBytes)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </UiTable>
+              {fileTotal > STORAGE_FILES_PAGE_SIZE && (
+                <div className="flex items-center justify-between border-t mt-3 pt-3 text-xs text-muted-foreground">
+                  <span>{fileFrom.toLocaleString()}–{fileTo.toLocaleString()} of {fileTotal.toLocaleString()}</span>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="sm" className="h-7" disabled={filePageClamped === 0} onClick={() => setFilePage((p) => Math.max(0, p - 1))}>
+                      <ArrowLeft className="h-3.5 w-3.5" /> Prev
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-7" disabled={fileTo >= fileTotal} onClick={() => setFilePage((p) => Math.min(fileMaxPage, p + 1))}>
+                      Next <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function FileDataPanel({ catalogId, namespace, table, partition, path, content, onBack }: {
+  catalogId: number; namespace: string; table: string; partition: PartitionStorage; path: string; content: string; onBack: () => void;
+}) {
+  const [page, setPage] = useState(0);
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['file-data', catalogId, namespace, table, path],
+    queryFn: () => tableApi.getFileData(catalogId, namespace, table, path, content, 500),
+  });
+  const fileName = path.split('/').pop() ?? path;
+  const contentBadge = (c: string) =>
+    c === 'DATA'
+      ? <Badge className="bg-cyan-500/10 text-cyan-400 border-0">data</Badge>
+      : <Badge className="bg-rose-500/10 text-rose-400 border-0">{c === 'POSITION_DELETES' ? 'pos-delete' : 'eq-delete'}</Badge>;
+
+  const rows = data?.rows ?? [];
+  const total = rows.length;
+  const maxPage = Math.max(0, Math.ceil(total / STORAGE_FILES_PAGE_SIZE) - 1);
+  const pageClamped = Math.min(page, maxPage);
+  const from = total === 0 ? 0 : pageClamped * STORAGE_FILES_PAGE_SIZE + 1;
+  const to = Math.min(total, (pageClamped + 1) * STORAGE_FILES_PAGE_SIZE);
+  const pageRows = rows.slice(pageClamped * STORAGE_FILES_PAGE_SIZE, to);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="ghost" size="sm" onClick={onBack}><ArrowLeft className="mr-1 h-4 w-4" /> Back to files</Button>
+        <span className="flex flex-wrap items-center gap-1.5 text-sm">
+          {partition.values.length > 0
+            ? partition.values.map((v) => <Badge key={v.field} variant="secondary" className="font-mono text-[11px]"><span className="text-secondary-foreground/70">{v.field}=</span>{v.value}</Badge>)
+            : <span className="text-muted-foreground">(unpartitioned)</span>}
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          {contentBadge(content)}
+          <span className="font-mono text-xs text-muted-foreground" title={path}>{fileName}</span>
+        </span>
+      </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="h-4 w-4 text-cyan-500" /> Rows
+            {data && <Badge className="bg-cyan-500/10 text-cyan-400 border-0">{data.rowCount.toLocaleString()}{data.hasMore ? '+' : ''}</Badge>}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-2">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-7" />)}</div>
+          ) : isError ? (
+            <p className="py-6 text-center text-sm text-rose-400">Could not read file: {apiErrorMessage(error as Error)}</p>
+          ) : !data || total === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">No rows.</p>
+          ) : (
+            <>
+              {data.hasMore && <p className="mb-2 text-xs text-amber-400">Showing first {data.rowCount.toLocaleString()} rows (capped).</p>}
+              <div className="overflow-x-auto">
                 <UiTable>
-                  <TableHeader><TableRow><TableHead>File</TableHead><TableHead>Type</TableHead><TableHead className="text-right">Records</TableHead><TableHead className="text-right">Size</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow>{data.columns.map((c) => <TableHead key={c} className="whitespace-nowrap">{c}</TableHead>)}</TableRow></TableHeader>
                   <TableBody>
-                    {data.files.map((f) => (
-                      <TableRow key={f.path}>
-                        <TableCell className="font-mono text-xs text-muted-foreground" title={f.path}>{baseName(f.path)}</TableCell>
-                        <TableCell>{contentBadge(f.content)}</TableCell>
-                        <TableCell className="text-right text-muted-foreground">{f.recordCount.toLocaleString()}</TableCell>
-                        <TableCell className="text-right tabular-nums">{formatBytes(f.sizeBytes)}</TableCell>
+                    {pageRows.map((r, i) => (
+                      <TableRow key={pageClamped * STORAGE_FILES_PAGE_SIZE + i}>
+                        {data.columns.map((c) => {
+                          const val = (r as Record<string, unknown>)[c];
+                          return (
+                            <TableCell key={c} className="max-w-[280px] truncate font-mono text-xs" title={val == null ? '' : String(val)}>
+                              {val == null ? <span className="italic text-muted-foreground">null</span> : String(val)}
+                            </TableCell>
+                          );
+                        })}
                       </TableRow>
                     ))}
                   </TableBody>
                 </UiTable>
-              </ScrollArea>
+              </div>
+              {total > STORAGE_FILES_PAGE_SIZE && (
+                <div className="flex items-center justify-between border-t mt-3 pt-3 text-xs text-muted-foreground">
+                  <span>{from.toLocaleString()}–{to.toLocaleString()} of {total.toLocaleString()}</span>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="sm" className="h-7" disabled={pageClamped === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                      <ArrowLeft className="h-3.5 w-3.5" /> Prev
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-7" disabled={to >= total} onClick={() => setPage((p) => Math.min(maxPage, p + 1))}>
+                      Next <ChevronRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </CardContent>

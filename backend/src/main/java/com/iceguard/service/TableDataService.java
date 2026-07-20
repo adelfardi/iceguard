@@ -13,9 +13,12 @@ import org.apache.iceberg.data.GenericRecord;
 import org.apache.iceberg.data.IcebergGenerics;
 import org.apache.iceberg.data.InternalRecordWrapper;
 import org.apache.iceberg.data.Record;
+import org.apache.iceberg.MetadataColumns;
+import org.apache.iceberg.data.parquet.GenericParquetReaders;
 import org.apache.iceberg.data.parquet.GenericParquetWriter;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.io.DataWriter;
+import org.apache.iceberg.io.InputFile;
 import org.apache.iceberg.io.OutputFile;
 import org.apache.iceberg.parquet.Parquet;
 import org.apache.iceberg.types.Type;
@@ -71,6 +74,59 @@ public class TableDataService {
         } catch (Exception e) {
             throw new CatalogOperationException("Failed to sample data from " + namespace + "." + tableName, e);
         }
+    }
+
+    /**
+     * Read rows from a single Parquet file (data OR delete file), using the file's own schema.
+     * Works uniformly for data, position-delete and equality-delete files since all are
+     * self-describing Parquet — we read the footer schema, then stream rows with the generic reader.
+     */
+    public DataSampleResponse readFileData(Long catalogId, String namespace, String tableName,
+                                           String path, String content, int limit) {
+        if (path == null || path.isBlank()) {
+            throw new CatalogOperationException("Missing file path");
+        }
+        Table table = access.loadTable(catalogId, namespace, tableName);
+        InputFile in = table.io().newInputFile(path);
+        // Position-delete files carry the fixed (file_path, pos) schema; data and
+        // equality-delete files are read against the table schema (Iceberg maps by field id,
+        // filling columns absent from the file — e.g. equality deletes — with null).
+        Schema schema = "POSITION_DELETES".equalsIgnoreCase(content)
+                ? new Schema(MetadataColumns.DELETE_FILE_PATH, MetadataColumns.DELETE_FILE_POS)
+                : table.schema();
+        try {
+            List<String> columns = schema.columns().stream().map(Types.NestedField::name).toList();
+
+            List<Map<String, Object>> rows = new ArrayList<>();
+            boolean hasMore = false;
+            try (CloseableIterable<Record> records = Parquet.read(in)
+                    .project(schema)
+                    .createReaderFunc(fileSchema -> GenericParquetReaders.buildReader(schema, fileSchema))
+                    .build()) {
+                int count = 0;
+                for (Record record : records) {
+                    if (count >= limit) { hasMore = true; break; }
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    for (Types.NestedField field : schema.columns()) {
+                        row.put(field.name(), displayValue(record.getField(field.name())));
+                    }
+                    rows.add(row);
+                    count++;
+                }
+            }
+            return new DataSampleResponse(columns, rows, rows.size(), hasMore);
+        } catch (IOException e) {
+            throw new CatalogOperationException("Failed to read file: " + e.getMessage(), e);
+        } catch (Exception e) {
+            throw new CatalogOperationException("Failed to read file " + path + ": " + e.getMessage(), e);
+        }
+    }
+
+    private Object displayValue(Object v) {
+        if (v == null) return null;
+        if (v instanceof java.nio.ByteBuffer bb) return "<binary " + bb.remaining() + " bytes>";
+        if (v instanceof byte[] b) return "<binary " + b.length + " bytes>";
+        return v.toString();
     }
 
     public int insertData(Long catalogId, String namespace, String tableName, List<Map<String, Object>> rows) {

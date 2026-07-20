@@ -92,14 +92,18 @@ function OptionRow({ o, params, onChange }: {
  * (the Iceberg option values — MB shown in MB, stored in bytes). Reused by the table maintenance
  * dialog and the pipeline task editor.
  */
-export function RewriteOptionsEditor({ params, onChange, engine }: {
+export function RewriteOptionsEditor({ params, onChange, engine, hiddenKeys }: {
   params: Record<string, string>;
   onChange: (next: Record<string, string>) => void;
   /** When 'java', only the options the in-process executor honours are shown. */
   engine?: 'java' | 'spark';
+  /** Option keys to hide (e.g. 'where' when it is derived from a partition selection). */
+  hiddenKeys?: string[];
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const visible = engine === 'java' ? REWRITE_OPTIONS.filter((o) => o.javaSupported) : REWRITE_OPTIONS;
+  const hidden = new Set(hiddenKeys ?? []);
+  const visible = (engine === 'java' ? REWRITE_OPTIONS.filter((o) => o.javaSupported) : REWRITE_OPTIONS)
+    .filter((o) => !hidden.has(o.key));
   const basic = visible.filter((o) => !o.advanced);
   const advanced = visible.filter((o) => o.advanced);
   return (

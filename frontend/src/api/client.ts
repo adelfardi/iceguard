@@ -196,7 +196,27 @@ export const tableApi = {
         { params: { ...params, search: params.search || undefined } },
       )
       .then((r) => r.data),
-  getStorageFiles: (catalogId: number, namespace: string, table: string, partition: string | null, limit = 500) =>
+  getNessieSnapshotDetail: (catalogId: number, namespace: string, table: string, snapshotId: string) =>
+    api
+      .get<{ available: boolean; operation: string | null; summary: Record<string, string>; message: string | null }>(
+        `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/nessie-snapshot/${snapshotId}`,
+      )
+      .then((r) => r.data),
+  getHotPartitions: (catalogId: number, namespace: string, table: string, windowHours = 6) =>
+    api
+      .get<{ partition: string; commits: number }[]>(
+        `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/storage/hot-partitions`,
+        { params: { windowHours } },
+      )
+      .then((r) => r.data),
+  getFileData: (catalogId: number, namespace: string, table: string, path: string, content?: string, limit = 100) =>
+    api
+      .get<DataSampleResponse>(
+        `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/storage/file-data`,
+        { params: { path, content, limit } },
+      )
+      .then((r) => r.data),
+  getStorageFiles: (catalogId: number, namespace: string, table: string, partition: string | null, limit = 0) =>
     api
       .get<StorageFiles>(
         `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/storage/files`,
@@ -369,4 +389,8 @@ export const pipelineApi = {
     api.get<PipelineRunResponse[]>(`/pipelines/runs/recent?limit=${limit}`).then((r) => r.data),
   getRun: (runId: number) =>
     api.get<PipelineRunResponse>(`/pipelines/runs/${runId}`).then((r) => r.data),
+  rerunRun: (runId: number) =>
+    api.post<PipelineRunResponse>(`/pipelines/runs/${runId}/rerun`).then((r) => r.data),
+  retryTask: (runId: number, taskRunId: number) =>
+    api.post<PipelineRunResponse>(`/pipelines/runs/${runId}/tasks/${taskRunId}/retry`).then((r) => r.data),
 };

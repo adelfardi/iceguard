@@ -280,8 +280,13 @@ public class TableService {
             long now = System.currentTimeMillis();
             try {
                 List<SnapshotResponse> snaps = nessieSnapshots(cfg, namespace, tableName);
-                nessieSnapshotCache.put(key, new CachedSnapshots(snaps, now + NESSIE_SNAPSHOT_TTL_MS));
-                return snaps;
+                // Only trust a non-empty reconstruction; an empty one (history unreachable or no
+                // matching commits) should fall through to the current Iceberg snapshot below so
+                // the timeline still shows at least the current commit with full details.
+                if (!snaps.isEmpty()) {
+                    nessieSnapshotCache.put(key, new CachedSnapshots(snaps, now + NESSIE_SNAPSHOT_TTL_MS));
+                    return snaps;
+                }
             } catch (Exception e) {
                 CachedSnapshots cached = nessieSnapshotCache.get(key);
                 if (cached != null && cached.expiresAt() > now) {
@@ -342,6 +347,59 @@ public class TableService {
 
         boolean enough = total >= 12;
         return new CommitActivityResponse(hourly, total, quietestHour, windowStart, windowHours, enough);
+    }
+
+    /**
+     * On-demand detail for a single Nessie snapshot: find the commit that produced it, read that
+     * commit's own metadata.json, and return the snapshot's real Iceberg summary. No caching — this
+     * is computed per click. Returns {@code available=false} + a message when it can't be recovered.
+     */
+    public NessieSnapshotDetailResponse nessieSnapshotDetail(Long catalogId, String namespace, String tableName, long snapshotId) {
+        CatalogConfig cfg = catalogService.findOrThrow(catalogId);
+        if (!isNessie(cfg)) {
+            return new NessieSnapshotDetailResponse(false, null, Map.of(), "Details on demand are only available for Nessie catalogs.");
+        }
+
+        Table table = loadTable(catalogId, namespace, tableName);
+
+        // Fast path: the current snapshot carries its full summary in the live metadata —
+        // no need to hit the (sometimes slow/flaky) Nessie commit-log for it.
+        Snapshot current = table.currentSnapshot();
+        if (current != null && current.snapshotId() == snapshotId) {
+            return new NessieSnapshotDetailResponse(true, current.operation(), current.summary(), null);
+        }
+
+        // Historical snapshot: resolve its metadata.json via the commit log, then read the summary.
+        String metadataLocation = null;
+        try {
+            for (NessieCommitResponse c : nessieHistoryService.tableHistory(catalogId, namespace, tableName)) {
+                if (c.snapshotId() != null && c.snapshotId() == snapshotId) {
+                    metadataLocation = c.metadataLocation();
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            return new NessieSnapshotDetailResponse(false, null, Map.of(), "Could not read the Nessie commit log: " + e.getMessage());
+        }
+        if (metadataLocation == null || metadataLocation.isBlank()) {
+            return new NessieSnapshotDetailResponse(false, null, Map.of(), "No metadata reference recorded for this commit.");
+        }
+
+        try {
+            FileIO io = table.io();
+            TableMetadata metadata = TableMetadataParser.read(io, io.newInputFile(metadataLocation));
+            Snapshot snap = metadata.snapshot(snapshotId);
+            if (snap == null) {
+                snap = metadata.currentSnapshot();
+            }
+            if (snap == null) {
+                return new NessieSnapshotDetailResponse(false, null, Map.of(), "Snapshot not present in the commit metadata.");
+            }
+            return new NessieSnapshotDetailResponse(true, snap.operation(), snap.summary(), null);
+        } catch (Exception e) {
+            return new NessieSnapshotDetailResponse(false, null, Map.of(),
+                    "Commit metadata is no longer available (expired or cleaned up).");
+        }
     }
 
     /** Driven by the stored vendor, not re-guessed from the name/URI. */
@@ -427,6 +485,82 @@ public class TableService {
 
     public DataSampleResponse sampleData(Long catalogId, String namespace, String tableName, int limit) {
         return dataService.sampleData(catalogId, namespace, tableName, limit);
+    }
+
+    public DataSampleResponse readFileData(Long catalogId, String namespace, String tableName, String path, String content, int limit) {
+        return dataService.readFileData(catalogId, namespace, tableName, path, content, limit);
+    }
+
+    public java.util.List<HotPartitionResponse> hotPartitions(
+            Long catalogId, String namespace, String tableName, int windowHours) {
+        long windowMs = Math.max(1, windowHours) * 3_600_000L;
+        CatalogConfig cfg = catalogService.findOrThrow(catalogId);
+        // Nessie's live metadata keeps only the current snapshot, so the storage service (which
+        // iterates table.snapshots()) would see a single commit. Use the commit log instead.
+        if (isNessie(cfg)) {
+            try {
+                java.util.List<HotPartitionResponse> res = nessieHotPartitions(catalogId, namespace, tableName, windowMs);
+                if (res != null) {
+                    return res;
+                }
+            } catch (Exception e) {
+                LOG.warnf("Nessie hot-partition detection failed, falling back: %s", e.getMessage());
+            }
+        }
+        return storageService.hotPartitions(catalogId, namespace, tableName, windowMs);
+    }
+
+    /** Hot partitions for a Nessie table: derived from the commit log (one metadata.json read per
+     *  in-window commit). Returns null to let the caller fall back if the commit log is empty. */
+    private java.util.List<HotPartitionResponse> nessieHotPartitions(
+            Long catalogId, String namespace, String tableName, long windowMs) {
+        List<NessieCommitResponse> commits = nessieHistoryService.tableHistory(catalogId, namespace, tableName);
+        if (commits.isEmpty()) {
+            return null;
+        }
+        Table table = loadTable(catalogId, namespace, tableName);
+        FileIO io = table.io();
+        Map<Integer, PartitionSpec> specs = table.specs();
+        long cutoff = System.currentTimeMillis() - windowMs;
+
+        Map<String, Integer> counts = new java.util.LinkedHashMap<>();
+        for (NessieCommitResponse c : commits) {
+            if (c.committedAt() == null || c.committedAt().toEpochMilli() < cutoff) {
+                continue;
+            }
+            if (c.metadataLocation() == null || c.snapshotId() == null) {
+                continue;
+            }
+            try {
+                TableMetadata meta = TableMetadataParser.read(io, io.newInputFile(c.metadataLocation()));
+                Snapshot snap = meta.snapshot(c.snapshotId());
+                if (snap == null) {
+                    snap = meta.currentSnapshot();
+                }
+                if (snap == null) {
+                    continue;
+                }
+                java.util.Set<String> touched = new java.util.LinkedHashSet<>();
+                for (DataFile df : snap.addedDataFiles(io)) {
+                    touched.add(specs.get(df.specId()).partitionToPath(df.partition()));
+                }
+                for (DataFile df : snap.removedDataFiles(io)) {
+                    touched.add(specs.get(df.specId()).partitionToPath(df.partition()));
+                }
+                for (DeleteFile df : snap.addedDeleteFiles(io)) {
+                    touched.add(specs.get(df.specId()).partitionToPath(df.partition()));
+                }
+                for (String p : touched) {
+                    counts.merge(p, 1, Integer::sum);
+                }
+            } catch (Exception ignore) {
+                // Skip commits whose metadata/manifests are no longer readable.
+            }
+        }
+        return counts.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .map(e -> new HotPartitionResponse(e.getKey(), e.getValue()))
+                .toList();
     }
 
     public int insertData(Long catalogId, String namespace, String tableName, List<Map<String, Object>> rows) {
