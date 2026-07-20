@@ -36,7 +36,7 @@ public class NessieHistoryService {
     ObjectMapper objectMapper;
 
     private final HttpClient http = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(10))
+            .connectTimeout(Duration.ofSeconds(5))
             .build();
 
     public List<NessieCommitResponse> tableHistory(Long catalogId, String namespace, String table) {
@@ -49,13 +49,18 @@ public class NessieHistoryService {
 
         String url = apiBase + "/trees/" + urlEncode(ref) + "/history?fetch=ALL&maxRecords=200";
         HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url))
-                .timeout(Duration.ofSeconds(30))
+                .timeout(Duration.ofSeconds(12))
                 .GET();
         String auth = authHeader(cfg);
         if (auth != null) req.header("Authorization", auth);
 
         try {
-            HttpResponse<String> resp = http.send(req.build(), HttpResponse.BodyHandlers.ofString());
+            // Hard cap the whole exchange: some Nessie servers accept the connection then hang on
+            // the (chunked) response body, so HttpRequest.timeout alone can leave us blocked. orTimeout
+            // cancels the async call and surfaces a TimeoutException, letting callers fall back quickly.
+            HttpResponse<String> resp = http.sendAsync(req.build(), HttpResponse.BodyHandlers.ofString())
+                    .orTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+                    .get();
             if (resp.statusCode() / 100 != 2) {
                 throw new RuntimeException("Nessie history HTTP " + resp.statusCode() + " for " + url
                         + " — " + truncate(resp.body()));
