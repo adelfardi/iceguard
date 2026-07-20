@@ -239,46 +239,155 @@ public class PipelineService {
         run.status = PipelineRun.RunStatus.RUNNING;
         run.startedAt = Instant.now();
 
-        boolean pipelineFailed = false;
-        List<PipelineTaskRun> taskRuns = taskRunRepository.findByRunId(run.id);
+        List<PipelineTaskRun> taskRuns = orderedTaskRuns(run.id);
+        boolean pipelineFailed = executeTaskRuns(taskRuns, ctx, config);
 
-        for (PipelineTaskRun taskRun : taskRuns) {
-            if (pipelineFailed) {
+        run.finishedAt = Instant.now();
+        run.status = pipelineFailed ? PipelineRun.RunStatus.FAILED : PipelineRun.RunStatus.SUCCESS;
+
+        return toRunResponse(run);
+    }
+
+    /** Run the given (ordered) task runs sequentially; a failure marks the rest SKIPPED. Returns true if any failed. */
+    private boolean executeTaskRuns(List<PipelineTaskRun> ordered, ExecutorContext ctx, CatalogConfig config) {
+        boolean failed = false;
+        for (PipelineTaskRun taskRun : ordered) {
+            if (failed) {
                 taskRun.status = PipelineTaskRun.RunStatus.SKIPPED;
+                taskRun.startedAt = null;
+                taskRun.finishedAt = null;
+                taskRun.errorMessage = null;
+                taskRun.result = null;
                 continue;
             }
 
             taskRun.status = PipelineTaskRun.RunStatus.RUNNING;
             taskRun.startedAt = Instant.now();
+            taskRun.finishedAt = null;
+            taskRun.errorMessage = null;
+            taskRun.result = null;
 
-            try {
-                Map<String, String> params = parseParameters(taskRun.task.parameters);
-                MaintenanceResult result = executeAction(ctx, config, taskRun.task.actionType, params);
+            // Reserved per-task keys: how many times to retry on failure, and the delay between attempts.
+            Map<String, String> params = new java.util.HashMap<>(parseParameters(taskRun.task.parameters));
+            int retries = Math.max(0, parseIntOrDefault(params.remove("retries"), 0));
+            long delaySec = Math.max(0, parseLongOrDefault(params.remove("retryDelaySeconds"), 0));
 
-                taskRun.finishedAt = Instant.now();
-                if (result.success()) {
-                    taskRun.status = PipelineTaskRun.RunStatus.SUCCESS;
-                    try {
-                        taskRun.result = objectMapper.writeValueAsString(result.details());
-                    } catch (Exception e) {
-                        taskRun.result = "{}";
-                    }
-                } else {
-                    taskRun.status = PipelineTaskRun.RunStatus.FAILED;
-                    taskRun.errorMessage = result.message();
-                    pipelineFailed = true;
+            MaintenanceResult result = null;
+            String errorMessage = null;
+            int attempt = 0;
+            while (true) {
+                try {
+                    result = executeAction(ctx, config, taskRun.task.actionType, params);
+                    errorMessage = result.success() ? null : result.message();
+                } catch (Exception e) {
+                    result = null;
+                    errorMessage = e.getMessage();
                 }
-            } catch (Exception e) {
-                taskRun.finishedAt = Instant.now();
+                boolean success = result != null && result.success();
+                if (success || attempt >= retries) {
+                    break;
+                }
+                attempt++;
+                LOG.warnf("Task %d (run %d) failed, retry %d/%d after %ds: %s",
+                        taskRun.task.id, taskRun.run.id, attempt, retries, delaySec, errorMessage);
+                if (delaySec > 0) {
+                    try {
+                        Thread.sleep(delaySec * 1000L);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+
+            taskRun.finishedAt = Instant.now();
+            String attemptSuffix = attempt > 0 ? " (after " + attempt + " retr" + (attempt == 1 ? "y" : "ies") + ")" : "";
+            if (result != null && result.success()) {
+                taskRun.status = PipelineTaskRun.RunStatus.SUCCESS;
+                try {
+                    taskRun.result = objectMapper.writeValueAsString(result.details());
+                } catch (Exception e) {
+                    taskRun.result = "{}";
+                }
+            } else {
                 taskRun.status = PipelineTaskRun.RunStatus.FAILED;
-                taskRun.errorMessage = e.getMessage();
-                pipelineFailed = true;
+                taskRun.errorMessage = (errorMessage == null ? "failed" : errorMessage) + attemptSuffix;
+                failed = true;
             }
         }
+        return failed;
+    }
+
+    private static int parseIntOrDefault(String v, int def) {
+        try { return v == null || v.isBlank() ? def : Integer.parseInt(v.trim()); } catch (NumberFormatException e) { return def; }
+    }
+
+    private static long parseLongOrDefault(String v, long def) {
+        try { return v == null || v.isBlank() ? def : Long.parseLong(v.trim()); } catch (NumberFormatException e) { return def; }
+    }
+
+    private List<PipelineTaskRun> orderedTaskRuns(Long runId) {
+        return taskRunRepository.findByRunId(runId).stream()
+                .sorted(java.util.Comparator.comparingInt(tr -> tr.orderIndex))
+                .toList();
+    }
+
+    /** Re-run the whole pipeline of an existing run (creates a fresh run). */
+    @Transactional
+    public PipelineRunResponse rerunRun(Long runId) {
+        PipelineRun run = runRepository.findById(runId);
+        if (run == null) {
+            throw new ResourceNotFoundException("Pipeline run not found: " + runId);
+        }
+        return doTrigger(run.pipeline.id, "rerun");
+    }
+
+    /** Retry a failed task in place and resume the downstream tasks (previously skipped). */
+    @Transactional
+    public PipelineRunResponse retryTask(Long runId, Long taskRunId) {
+        PipelineRun run = runRepository.findById(runId);
+        if (run == null) {
+            throw new ResourceNotFoundException("Pipeline run not found: " + runId);
+        }
+        List<PipelineTaskRun> ordered = orderedTaskRuns(runId);
+        PipelineTaskRun target = ordered.stream()
+                .filter(tr -> tr.id.equals(taskRunId))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Task run not found: " + taskRunId));
+        if (target.status != PipelineTaskRun.RunStatus.FAILED) {
+            throw new IllegalArgumentException("Only a failed task can be retried");
+        }
+
+        Pipeline pipeline = run.pipeline;
+        CatalogConfig config = pipeline.catalog;
+        Table table;
+        try {
+            table = catalogFactory.getOrCreate(config)
+                    .loadTable(TableIdentifier.of(Namespace.of(pipeline.namespace), pipeline.tableName));
+        } catch (Exception e) {
+            LOG.errorf("Failed to load table for pipeline %d on retry: %s", pipeline.id, e.getMessage());
+            target.status = PipelineTaskRun.RunStatus.FAILED;
+            target.errorMessage = "Failed to load table: " + e.getMessage();
+            run.status = PipelineRun.RunStatus.FAILED;
+            run.finishedAt = Instant.now();
+            return toRunResponse(run);
+        }
+
+        ExecutorContext ctx = new ExecutorContext(
+                config.name, config.uri, config.warehouse,
+                Map.of(), pipeline.namespace, pipeline.tableName, table
+        );
+
+        // Resume from the failed task: re-run it and everything after it.
+        run.status = PipelineRun.RunStatus.RUNNING;
+        run.finishedAt = null;
+        List<PipelineTaskRun> fromTarget = ordered.stream()
+                .filter(tr -> tr.orderIndex >= target.orderIndex)
+                .toList();
+        boolean failed = executeTaskRuns(fromTarget, ctx, config);
 
         run.finishedAt = Instant.now();
-        run.status = pipelineFailed ? PipelineRun.RunStatus.FAILED : PipelineRun.RunStatus.SUCCESS;
-
+        run.status = failed ? PipelineRun.RunStatus.FAILED : PipelineRun.RunStatus.SUCCESS;
         return toRunResponse(run);
     }
 

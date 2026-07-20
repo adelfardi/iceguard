@@ -11,6 +11,8 @@ import {
   ArrowLeft,
   Play,
   Loader2,
+  RefreshCw,
+  RotateCcw,
   Clock,
   Database,
   User,
@@ -68,6 +70,24 @@ export function PipelineDetail() {
       toast.success(`Pipeline run #${run.id} started`);
     },
     onError: (err: Error) => toast.error(`Failed to trigger: ${err.message}`),
+  });
+
+  const rerunMutation = useMutation({
+    mutationFn: (runId: number) => pipelineApi.rerunRun(runId),
+    onSuccess: (run) => {
+      queryClient.invalidateQueries({ queryKey: ['pipeline-runs', id] });
+      toast.success(`Rerun started — run #${run.id}`);
+    },
+    onError: (err: Error) => toast.error(`Failed to rerun: ${err.message}`),
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: ({ runId, taskRunId }: { runId: number; taskRunId: number }) => pipelineApi.retryTask(runId, taskRunId),
+    onSuccess: (run) => {
+      queryClient.invalidateQueries({ queryKey: ['pipeline-runs', id] });
+      toast.success(`Task retried — run #${run.id} is ${run.status}`);
+    },
+    onError: (err: Error) => toast.error(`Failed to retry task: ${err.message}`),
   });
 
   function toggleRun(runId: number) {
@@ -199,6 +219,10 @@ export function PipelineDetail() {
                   expanded={expandedRuns.has(run.id)}
                   onToggle={() => toggleRun(run.id)}
                   onSelectTask={setSelectedTaskRun}
+                  onRerun={() => rerunMutation.mutate(run.id)}
+                  onRetryTask={(taskRunId) => retryMutation.mutate({ runId: run.id, taskRunId })}
+                  rerunPending={rerunMutation.isPending}
+                  retryPending={retryMutation.isPending}
                 />
               ))}
             </div>
@@ -226,21 +250,31 @@ function RunCard({
   expanded,
   onToggle,
   onSelectTask,
+  onRerun,
+  onRetryTask,
+  rerunPending,
+  retryPending,
 }: {
   run: PipelineRunResponse;
   expanded: boolean;
   onToggle: () => void;
   onSelectTask: (taskRun: PipelineTaskRunResponse) => void;
+  onRerun: () => void;
+  onRetryTask: (taskRunId: number) => void;
+  rerunPending: boolean;
+  retryPending: boolean;
 }) {
+  const inFlight = run.status === 'RUNNING' || run.status === 'PENDING';
   return (
     <div className={cn(
       'rounded-lg border transition-all',
       run.status === 'RUNNING' && 'border-blue-500/30',
       run.status === 'FAILED' && 'border-red-500/30',
     )}>
+      <div className="flex items-center">
       <button
         onClick={onToggle}
-        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-accent rounded-lg transition-all duration-150"
+        className="flex flex-1 items-center justify-between px-4 py-3 text-left hover:bg-accent rounded-lg transition-all duration-150"
       >
         <div className="flex items-center gap-4">
           {expanded ? (
@@ -284,6 +318,18 @@ function RunCard({
           </div>
         )}
       </button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mr-2 shrink-0"
+          onClick={onRerun}
+          disabled={rerunPending || inFlight}
+          title="Re-run the whole pipeline (new run)"
+        >
+          {rerunPending ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
+          Rerun
+        </Button>
+      </div>
 
       {expanded && run.taskRuns.length > 0 && (
         <div className="px-4 pb-4 pt-3 border-t ml-6">
@@ -297,9 +343,24 @@ function RunCard({
                 key={tr.id}
                 className="mt-3 rounded-md bg-red-500/10 border border-red-500/20 p-3"
               >
-                <p className="text-xs font-semibold text-red-400 mb-1">
-                  {tr.taskName} - Error
-                </p>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-xs font-semibold text-red-400">
+                    {tr.taskName} - Error
+                  </p>
+                  {tr.status === 'FAILED' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 shrink-0"
+                      onClick={() => onRetryTask(tr.id)}
+                      disabled={retryPending || inFlight}
+                      title="Retry this task and resume the following tasks"
+                    >
+                      {retryPending ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="mr-1 h-3.5 w-3.5" />}
+                      Retry task
+                    </Button>
+                  )}
+                </div>
                 <p className="text-xs text-red-300 font-mono whitespace-pre-wrap">
                   {tr.errorMessage}
                 </p>

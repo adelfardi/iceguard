@@ -51,6 +51,10 @@ const ACTION_TYPES = Object.keys(ACTION_TYPE_META);
 
 const ENGINE_PARAM = 'engine';
 const SPARK_CLUSTER_PARAM = 'sparkClusterId';
+const RETRIES_PARAM = 'retries';
+const RETRY_DELAY_PARAM = 'retryDelaySeconds';
+/** Reserved task-parameter keys — consumed by the backend, not passed as Iceberg options. */
+const RESERVED_PARAMS = [ENGINE_PARAM, SPARK_CLUSTER_PARAM, RETRIES_PARAM, RETRY_DELAY_PARAM];
 
 function taskEngine(task: TaskDraft): 'java' | 'spark' {
   return task.parameters[ENGINE_PARAM] === 'spark' ? 'spark' : 'java';
@@ -258,6 +262,129 @@ function formatNextRun(cron: string): string {
     candidate.setUTCMinutes(candidate.getUTCMinutes() + 1);
   }
   return '—';
+}
+
+type CronMode = 'minutes' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'custom';
+const CRON_MODES: { id: CronMode; label: string }[] = [
+  { id: 'minutes', label: 'Every N min' },
+  { id: 'hourly', label: 'Hourly' },
+  { id: 'daily', label: 'Daily' },
+  { id: 'weekly', label: 'Weekly' },
+  { id: 'monthly', label: 'Monthly' },
+  { id: 'custom', label: 'Custom' },
+];
+const DOW_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** Best-effort parse of a 5-field cron into the builder's mode + fields (for prefill). */
+function parseCron(value: string): { mode: CronMode; everyN: string; minute: string; hour: string; dow: string; dom: string } {
+  const def = { mode: 'custom' as CronMode, everyN: '15', minute: '0', hour: '2', dow: '1', dom: '1' };
+  const p = value.trim().split(/\s+/);
+  if (!value.trim() || p.length !== 5) return def;
+  const [m, h, dom, mon, dow] = p;
+  if (mon === '*') {
+    if (/^\*\/\d+$/.test(m) && h === '*' && dom === '*' && dow === '*') return { ...def, mode: 'minutes', everyN: m.slice(2) };
+    if (/^\d+$/.test(m) && h === '*' && dom === '*' && dow === '*') return { ...def, mode: 'hourly', minute: m };
+    if (/^\d+$/.test(m) && /^\d+$/.test(h) && dom === '*' && dow === '*') return { ...def, mode: 'daily', minute: m, hour: h };
+    if (/^\d+$/.test(m) && /^\d+$/.test(h) && dom === '*' && /^\d+$/.test(dow)) return { ...def, mode: 'weekly', minute: m, hour: h, dow };
+    if (/^\d+$/.test(m) && /^\d+$/.test(h) && /^\d+$/.test(dom) && dow === '*') return { ...def, mode: 'monthly', minute: m, hour: h, dom };
+  }
+  return def;
+}
+
+/** Graphical cron composer — presets + typed fields generate a 5-field cron. */
+function CronBuilder({ value, onChange }: { value: string; onChange: (cron: string) => void }) {
+  const init = React.useMemo(() => parseCron(value), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [mode, setMode] = useState<CronMode>(init.mode);
+  const [everyN, setEveryN] = useState(init.everyN);
+  const [minute, setMinute] = useState(init.minute);
+  const [hour, setHour] = useState(init.hour);
+  const [dow, setDow] = useState(init.dow);
+  const [dom, setDom] = useState(init.dom);
+
+  const clamp = (v: string, lo: number, hi: number) => String(Math.min(hi, Math.max(lo, Math.floor(Number(v) || 0))));
+
+  // Regenerate the cron whenever a builder field changes (custom mode is user-typed).
+  React.useEffect(() => {
+    if (mode === 'custom') return;
+    const mm = clamp(minute, 0, 59);
+    const hh = clamp(hour, 0, 23);
+    let cron = '';
+    switch (mode) {
+      case 'minutes': cron = `*/${clamp(everyN, 1, 59)} * * * *`; break;
+      case 'hourly': cron = `${mm} * * * *`; break;
+      case 'daily': cron = `${mm} ${hh} * * *`; break;
+      case 'weekly': cron = `${mm} ${hh} * * ${dow}`; break;
+      case 'monthly': cron = `${mm} ${hh} ${clamp(dom, 1, 31)} * *`; break;
+    }
+    if (cron) onChange(cron);
+  }, [mode, everyN, minute, hour, dow, dom]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const numField = (label: string, val: string, set: (v: string) => void, min: number, max: number) => (
+    <div className="space-y-1">
+      <Label className="text-xs">{label}</Label>
+      <Input type="number" min={min} max={max} value={val} onChange={(e) => set(e.target.value)} className="h-9" />
+    </div>
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1.5">
+        {CRON_MODES.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => setMode(m.id)}
+            className={cn(
+              'rounded-md border px-2.5 py-1 text-xs transition-colors',
+              mode === m.id ? 'border-indigo-500/60 bg-indigo-500/[0.1] text-indigo-300' : 'border-border/60 text-muted-foreground hover:border-indigo-500/40',
+            )}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {mode !== 'custom' && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {mode === 'minutes' && numField('Every (minutes)', everyN, setEveryN, 1, 59)}
+          {mode === 'hourly' && numField('At minute', minute, setMinute, 0, 59)}
+          {(mode === 'daily' || mode === 'weekly' || mode === 'monthly') && (
+            <>
+              {numField('Hour (0-23)', hour, setHour, 0, 23)}
+              {numField('Minute (0-59)', minute, setMinute, 0, 59)}
+            </>
+          )}
+          {mode === 'weekly' && (
+            <div className="space-y-1">
+              <Label className="text-xs">Day of week</Label>
+              <Select value={dow} onValueChange={setDow}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>{DOW_LABELS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          )}
+          {mode === 'monthly' && numField('Day of month', dom, setDom, 1, 31)}
+        </div>
+      )}
+
+      <div className="space-y-1">
+        <Label htmlFor="pipeline-cron" className="text-xs">Cron expression {mode !== 'custom' && <span className="text-muted-foreground">(generated)</span>}</Label>
+        <Input
+          id="pipeline-cron"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          readOnly={mode !== 'custom'}
+          placeholder="0 2 * * * (optional)"
+          className={cn('font-mono', mode !== 'custom' && 'opacity-80')}
+        />
+        <p className="text-[11px] text-muted-foreground">
+          {value.trim()
+            ? <>Next run (UTC): <span className="text-foreground">{formatNextRun(value)}</span></>
+            : 'Leave empty for a manual-only pipeline. Times are UTC · minute hour day-of-month month day-of-week.'}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 export function Pipelines() {
@@ -709,6 +836,14 @@ export function PipelineEditor() {
     updateTask(task.key, { parameters: next });
   }
 
+  function setReservedNumParam(task: TaskDraft, key: string, value: string) {
+    const next = { ...task.parameters };
+    const v = value.trim();
+    if (v && Number(v) > 0) next[key] = String(Math.floor(Number(v)));
+    else delete next[key];
+    updateTask(task.key, { parameters: next });
+  }
+
   function updateParam(task: TaskDraft, field: ActionParamField, displayVal: string) {
     const next = { ...task.parameters };
     if (displayVal.trim() === '') {
@@ -1046,11 +1181,12 @@ export function PipelineEditor() {
 
                 {selectedTask.actionType === 'REWRITE_DATA_FILES' ? (
                   <RewriteOptionsEditor
-                    params={Object.fromEntries(Object.entries(selectedTask.parameters).filter(([k]) => k !== ENGINE_PARAM && k !== SPARK_CLUSTER_PARAM))}
+                    params={Object.fromEntries(Object.entries(selectedTask.parameters).filter(([k]) => !RESERVED_PARAMS.includes(k)))}
                     onChange={(next) => {
                       const reserved: Record<string, string> = {};
-                      if (selectedTask.parameters[ENGINE_PARAM]) reserved[ENGINE_PARAM] = selectedTask.parameters[ENGINE_PARAM];
-                      if (selectedTask.parameters[SPARK_CLUSTER_PARAM]) reserved[SPARK_CLUSTER_PARAM] = selectedTask.parameters[SPARK_CLUSTER_PARAM];
+                      for (const k of RESERVED_PARAMS) {
+                        if (selectedTask.parameters[k]) reserved[k] = selectedTask.parameters[k];
+                      }
                       updateTask(selectedTask.key, { parameters: { ...reserved, ...next } });
                     }}
                     engine={taskEngine(selectedTask)}
@@ -1068,6 +1204,26 @@ export function PipelineEditor() {
                 ) : (
                   <p className="text-[11px] italic text-muted-foreground">No parameters for this action.</p>
                 )}
+
+                {/* Retry on failure (all action types) */}
+                <div className="grid gap-2 rounded-md border border-border/50 bg-background/40 p-2">
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Retry on failure</span>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Retries</Label>
+                      <Input type="number" min={0} placeholder="0"
+                        value={selectedTask.parameters[RETRIES_PARAM] ?? ''}
+                        onChange={(e) => setReservedNumParam(selectedTask, RETRIES_PARAM, e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Delay between retries (s)</Label>
+                      <Input type="number" min={0} placeholder="0"
+                        value={selectedTask.parameters[RETRY_DELAY_PARAM] ?? ''}
+                        onChange={(e) => setReservedNumParam(selectedTask, RETRY_DELAY_PARAM, e.target.value)} />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Re-runs this task up to N extra times if it fails, waiting the delay between attempts.</p>
+                </div>
               </div>
             )}
           </div>
@@ -1075,16 +1231,11 @@ export function PipelineEditor() {
 
           {/* 5 · Schedule */}
           {wizardStep === 2 && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="pipeline-cron">Cron Expression</Label>
-              <Input id="pipeline-cron" value={cronExpression} onChange={(e) => setCronExpression(e.target.value)} placeholder="0 2 * * * (optional)" className="font-mono" />
-            </div>
-            <div className="flex items-end gap-3 pb-1">
-              <div className="flex items-center gap-2">
-                <Switch id="pipeline-enabled" checked={enabled} onCheckedChange={setEnabled} />
-                <Label htmlFor="pipeline-enabled">Enabled</Label>
-              </div>
+          <div className="space-y-4">
+            <CronBuilder value={cronExpression} onChange={setCronExpression} />
+            <div className="flex items-center gap-2 border-t border-border/50 pt-3">
+              <Switch id="pipeline-enabled" checked={enabled} onCheckedChange={setEnabled} />
+              <Label htmlFor="pipeline-enabled">Enabled</Label>
             </div>
           </div>
           )}
