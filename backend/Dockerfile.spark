@@ -8,7 +8,7 @@
 # each use their own Java.
 
 # ── Stage 1: build the Quarkus app (no need to run `mvn package` on the host) ──
-FROM maven:3.9-eclipse-temurin-21 AS builder
+FROM maven:3-eclipse-temurin-26 AS builder
 WORKDIR /build
 # Resolve dependencies first so they cache when only source changes (best-effort).
 COPY pom.xml .
