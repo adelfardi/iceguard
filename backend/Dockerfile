@@ -5,7 +5,7 @@
 # Spark-enabled variant.
 
 # ── Stage 1: build the Quarkus app ──
-FROM maven:3.9-eclipse-temurin-21 AS builder
+FROM maven:3-eclipse-temurin-26 AS builder
 WORKDIR /build
 COPY pom.xml .
 RUN mvn -B -ntp -q dependency:go-offline || true
