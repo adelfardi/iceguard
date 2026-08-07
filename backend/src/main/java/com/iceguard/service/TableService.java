@@ -387,7 +387,7 @@ public class TableService {
 
         try {
             FileIO io = table.io();
-            TableMetadata metadata = TableMetadataParser.read(io, io.newInputFile(metadataLocation));
+            TableMetadata metadata = TableMetadataParser.read(io, metadataLocation);
             Snapshot snap = metadata.snapshot(snapshotId);
             if (snap == null) {
                 snap = metadata.currentSnapshot();
@@ -532,7 +532,7 @@ public class TableService {
                 continue;
             }
             try {
-                TableMetadata meta = TableMetadataParser.read(io, io.newInputFile(c.metadataLocation()));
+                TableMetadata meta = TableMetadataParser.read(io, c.metadataLocation());
                 Snapshot snap = meta.snapshot(c.snapshotId());
                 if (snap == null) {
                     snap = meta.currentSnapshot();

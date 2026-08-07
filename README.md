@@ -95,7 +95,7 @@ flaky-remote handling) — see **[docs/NESSIE.md](docs/NESSIE.md)**.
 | Layer | Tech |
 |-------|------|
 | Frontend (product) | React, TypeScript, Vite, Tailwind CSS, shadcn/ui, TanStack Query, Zustand, Recharts |
-| Backend (product) | Java 21, Quarkus 3.17, RESTEasy Reactive, Hibernate Panache, Flyway, Apache Iceberg 1.7 |
+| Backend (product) | Java 21, Quarkus 3.17, RESTEasy Reactive, Hibernate Panache, Flyway, Apache Iceberg 1.11 |
 | Required dependency | PostgreSQL (backend state) |
 | Test sandbox only | Docker Compose: MinIO (S3), Iceberg REST Catalog, Nessie, Apache Polaris, (optional) Spark |
 

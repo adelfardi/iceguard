@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+- Upgrade **Apache Iceberg 1.10.0 → 1.11.0** (backend, bundled Spark image and the default
+  `--packages` coordinates); Parquet moves to **1.17.1** to match what Iceberg 1.11 pulls.
+  `TableMetadataParser.read(FileIO, InputFile)` was removed upstream — the Nessie snapshot/
+  partition-activity readers now use the `read(FileIO, String)` overload. Added `iceberg-orc`
+  (+ `orc-core`): 1.11's `FormatModelRegistry` registers all generic format models eagerly, so
+  even Parquet-only reads need the ORC classes on the classpath.
+
 ## [0.2.0] - 2026-06-22
 
 ### Added
