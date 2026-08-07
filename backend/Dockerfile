@@ -5,7 +5,10 @@
 # Spark-enabled variant.
 
 # ── Stage 1: build the Quarkus app ──
-FROM maven:3.9-eclipse-temurin-21 AS builder
+# Pinned to the BUILD platform: the output is architecture-neutral bytecode, so a multi-arch
+# build (linux/amd64 + linux/arm64) runs Maven once, natively, instead of once per target
+# under QEMU. Only the runtime stage below is per-architecture.
+FROM --platform=$BUILDPLATFORM maven:3.9-eclipse-temurin-21 AS builder
 WORKDIR /build
 COPY pom.xml .
 RUN mvn -B -ntp -q dependency:go-offline || true

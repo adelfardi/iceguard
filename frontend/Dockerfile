@@ -10,7 +10,9 @@
 # with npm 11, which records the rolldown/vite wasm optional deps differently
 # than npm 10 (shipped by the node images) — so we pin npm 11 to make `npm ci`
 # accept the lock file ("@emnapi/* missing from lock file" otherwise).
-FROM node:26-slim AS builder
+# Pinned to the BUILD platform: the bundle is just static files, so a multi-arch build runs
+# the npm install/build once, natively, instead of once per target under QEMU.
+FROM --platform=$BUILDPLATFORM node:26-slim AS builder
 WORKDIR /app
 RUN npm install -g npm@11.6.2
 COPY package*.json .npmrc ./

@@ -22,6 +22,9 @@ All notable changes to this project are documented here. The format is based on
   partition-activity readers now use the `read(FileIO, String)` overload. Added `iceberg-orc`
   (+ `orc-core`): 1.11's `FormatModelRegistry` registers all generic format models eagerly, so
   even Parquet-only reads need the ORC classes on the classpath.
+- Image build stages are pinned to `--platform=$BUILDPLATFORM`. Maven and npm produce
+  architecture-neutral output, so a multi-arch build (`linux/amd64,linux/arm64`) now runs them
+  once, natively, instead of once per target under QEMU.
 
 ### Fixed
 - **Frontend image now runs as a non-root user.** `nginx.conf.template` and the assets under
