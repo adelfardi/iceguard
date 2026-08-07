@@ -1,0 +1,36 @@
+{{- if .Values.tests.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ printf "%s-test" (include "iceguard.fullname" .) }}
+  labels:
+    {{- include "iceguard.labels" (dict "ctx" . "component" "test") | nindent 4 }}
+  annotations:
+    helm.sh/hook: test
+    # Keep the pod after a run so `helm test --logs` can still read it; the next run
+    # replaces it.
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  restartPolicy: Never
+  {{- include "iceguard.imagePullSecrets" . | nindent 2 }}
+  containers:
+    - name: check
+      image: {{ .Values.tests.image }}
+      command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "backend health:"
+          curl -sSf "http://{{ include "iceguard.backend.fullname" . }}:{{ .Values.backend.service.port }}/q/health/ready"
+          echo
+          echo "catalogs API:"
+          curl -sSf "http://{{ include "iceguard.backend.fullname" . }}:{{ .Values.backend.service.port }}/api/catalogs" -o /dev/null -w 'HTTP %{http_code}\n'
+          echo "UI (and its /api proxy):"
+          curl -sSf "http://{{ include "iceguard.frontend.fullname" . }}:{{ .Values.frontend.service.port }}/" -o /dev/null -w 'HTTP %{http_code}\n'
+          curl -sSf "http://{{ include "iceguard.frontend.fullname" . }}:{{ .Values.frontend.service.port }}/api/catalogs" -o /dev/null -w 'HTTP %{http_code}\n'
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+{{- end }}

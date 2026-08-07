@@ -1,0 +1,228 @@
+# Default values for the IceGuard chart.
+# Every key is documented in charts/iceguard/README.md.
+#
+# The chart deploys the two IceGuard services only — frontend + backend. The PostgreSQL
+# the backend stores its state in is YOUR database: fill in `database` below.
+
+# Applied to both components unless overridden per component.
+#
+# NOTE: 0.3.0-SNAPSHOT is built from this working tree (Iceberg 1.11) and is NOT published
+# to GHCR — load it into your nodes first (`kind load docker-image …`, or push it to your own
+# registry). Switch back to a released tag (0.2.0, or "" to follow the chart appVersion) for
+# a normal install.
+image:
+  registry: ghcr.io/adelfardi
+  tag: "0.3.0-SNAPSHOT"
+  pullPolicy: IfNotPresent
+  # Names of pre-created docker-registry secrets, e.g. [{name: my-ghcr-creds}]
+  pullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Extra labels/annotations added to every rendered object.
+commonLabels: {}
+commonAnnotations: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  # e.g. eks.amazonaws.com/role-arn to give the backend an S3 identity (IRSA).
+  annotations: {}
+  automountServiceAccountToken: false
+
+# ─── Backend: the Quarkus API ───
+backend:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/adelfardi/iceguard-backend
+    tag: "0.3.0-SNAPSHOT"
+    pullPolicy: ""
+
+  service:
+    type: ClusterIP
+    port: 8080
+    nodePort: ""
+    annotations: {}
+
+  # Rejected browser origins are a common first-run surprise. The UI calls the API
+  # through the frontend's nginx (same origin), so this only matters when something
+  # calls the API cross-origin — e.g. a Swagger UI opened on another host.
+  corsOrigins: "*"
+  # Data-insert bodies can be large; Quarkus' default limit is ~10M.
+  maxBodySize: 64M
+  oidc:
+    enabled: false
+    authServerUrl: ""
+    clientId: iceguard-backend
+
+  # Blocks startup until the database accepts TCP connections, so the backend does not
+  # CrashLoopBackOff while an unreachable database is waited on. Needs `database.host`
+  # (skipped when only `database.jdbcUrl` is set — there is no host to probe).
+  waitForDatabase:
+    enabled: true
+    image: busybox:1.37
+    timeoutSeconds: 180
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+  # Quarkus exposes SmallRye health at /q/health/*. The startup probe covers JVM boot
+  # plus the Flyway migration, so the liveness probe can stay tight afterwards.
+  startupProbe:
+    enabled: true
+    periodSeconds: 3
+    failureThreshold: 40
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 0
+    periodSeconds: 15
+    failureThreshold: 5
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 0
+    periodSeconds: 10
+    failureThreshold: 3
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    fsGroup: 1001
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+
+  # JAVA_OPTS and any other raw env. Both forms are supported:
+  #   extraEnv: [{name: FOO, value: "bar"}]              (verbatim env entries)
+  #   extraEnvFrom: [{configMapRef: {name: my-config}}]  (envFrom entries)
+  extraEnv: []
+  extraEnvFrom: []
+
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+  # Only created when replicaCount > 1.
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+
+# ─── Frontend: the React UI served by nginx (also proxies /api to the backend) ───
+frontend:
+  replicaCount: 1
+  image:
+    repository: ghcr.io/adelfardi/iceguard-frontend
+    tag: "0.3.0-SNAPSHOT"
+    pullPolicy: ""
+
+  service:
+    type: ClusterIP
+    port: 80
+    nodePort: ""
+    annotations: {}
+
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 20
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 2
+    periodSeconds: 10
+
+  # The stock nginx image renders its config with envsubst at startup and writes to
+  # /var/cache/nginx, so it needs a writable filesystem and runs its master as root.
+  # The chart mounts emptyDirs for those paths; flip these if you swap in an
+  # unprivileged nginx image.
+  podSecurityContext: {}
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+      add: ["CHOWN", "SETGID", "SETUID", "NET_BIND_SERVICE", "DAC_OVERRIDE"]
+
+  extraEnv: []
+  extraEnvFrom: []
+
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  topologySpreadConstraints: []
+  priorityClassName: ""
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+
+# ─── Your PostgreSQL (required) ───
+# IceGuard's own state — registered catalogs and their credentials, Spark clusters,
+# schedules, execution history. The chart does NOT deploy a database; point this at yours.
+# The schema must be EMPTY on first install: Flyway owns it and migrates at startup.
+database:
+  host: ""
+  port: 5432
+  name: iceguard
+  # Schema owning the IceGuard tables. Set it to share a database with another application —
+  # Flyway creates it if missing and Hibernate validates against it. The migrations are
+  # schema-agnostic, so this single value moves every table.
+  schema: public
+  username: iceguard
+  # Prefer `existingSecret` over an inline password.
+  password: ""
+  # Full JDBC URL; overrides host/port/name when set (handy for sslmode & co.):
+  #   jdbc:postgresql://db.internal:5432/iceguard?sslmode=require
+  jdbcUrl: ""
+  # A secret you manage holding the credentials. The password is read from
+  # `passwordKey`; the username is read from `usernameKey` only when you set it,
+  # otherwise the plain `username` above is used.
+  existingSecret: ""
+  usernameKey: ""
+  passwordKey: password
+
+# ─── Ingress ───
+# Each path routes to `frontend` (the UI; it proxies /api itself) or `backend`
+# (the raw API, e.g. to expose /q/swagger-ui).
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: iceguard.local
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+  tls: []
+  #  - secretName: iceguard-tls
+  #    hosts: [iceguard.local]
+
+# Deny-all-but-the-chart NetworkPolicy in front of the backend.
+networkPolicy:
+  enabled: false
+  # Extra ingress rules for the backend (e.g. allow your monitoring namespace).
+  backendExtraIngress: []
+
+# `helm test` pod: curls the backend health endpoint through its Service.
+tests:
+  enabled: true
+  image: curlimages/curl:8.11.1

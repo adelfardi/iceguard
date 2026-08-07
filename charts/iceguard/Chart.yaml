@@ -1,0 +1,22 @@
+apiVersion: v2
+name: iceguard
+description: IceGuard — a web console for Apache Iceberg tables (React UI + Quarkus API)
+type: application
+
+# Chart version — bumped on chart changes, independent of the app version below.
+version: 0.1.0
+# Application version — the fallback image tag when values leave the tags empty.
+appVersion: "0.3.0-SNAPSHOT"
+
+home: https://github.com/adelfardi/iceguard
+sources:
+  - https://github.com/adelfardi/iceguard
+keywords:
+  - iceberg
+  - lakehouse
+  - data-catalog
+  - nessie
+  - polaris
+maintainers:
+  - name: Adel Fardi
+    url: https://github.com/adelfardi

@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- **Helm chart** (`charts/iceguard`) to deploy on Kubernetes: frontend + backend against a
+  PostgreSQL you provide (the chart ships no database), pulling the published GHCR images.
+  Ingress, network policy, OIDC, probes, PDBs and a `helm test` check are included, and the
+  render fails fast when no database is configured. Installable without Helm too, via
+  `helm template … | kubectl apply -f -`. CI lints and schema-validates the rendered manifests.
 - **Configurable database schema** (`iceguard.db.schema`, env `ICEGUARD_DB_SCHEMA`; default
   `public`). IceGuard can now share a database with another application instead of owning
   `public`. Flyway creates the schema and Hibernate validates against it.

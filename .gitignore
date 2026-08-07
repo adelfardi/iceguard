@@ -7,6 +7,8 @@
 .aws/
 key
 *.key
+# Environment overlays carry real database credentials — keep them out of the repo.
+charts/iceguard/values-*-draft.yaml
 
 
 # ─── Java / Maven (backend) ───
