@@ -23,5 +23,11 @@ FROM nginx:1.31-alpine
 # The official image runs envsubst over *.template files into /etc/nginx/conf.d at startup.
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=builder /app/dist /usr/share/nginx/html
+# COPY keeps the checkout's mode, and several sources here are 0640 (the template, the assets
+# under public/). A container running as a non-root user — required by the `restricted` Pod
+# Security Standard, which also denies the DAC_OVERRIDE that papers over it — then cannot read
+# them, and the entrypoint dies on "default.conf.template: Permission denied".
+# `a+rX` adds read for everyone plus traverse on directories only (never +x on files).
+RUN chmod -R a+rX /etc/nginx/templates /usr/share/nginx/html
 ENV BACKEND_URL=http://backend:8080
 EXPOSE 80

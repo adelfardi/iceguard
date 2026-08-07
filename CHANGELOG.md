@@ -23,6 +23,13 @@ All notable changes to this project are documented here. The format is based on
   (+ `orc-core`): 1.11's `FormatModelRegistry` registers all generic format models eagerly, so
   even Parquet-only reads need the ORC classes on the classpath.
 
+### Fixed
+- **Frontend image now runs as a non-root user.** `nginx.conf.template` and the assets under
+  `public/` were copied with the checkout's `0640` mode, so the entrypoint died on
+  "default.conf.template: Permission denied" unless the container ran as root (or kept
+  `DAC_OVERRIDE`). A `chmod -R a+rX` at build time makes the image satisfy the `restricted`
+  Pod Security Standard, with only `NET_BIND_SERVICE` for port 80.
+
 ## [0.2.0] - 2026-06-22
 
 ### Added
