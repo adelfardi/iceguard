@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+- **Configurable database schema** (`iceguard.db.schema`, env `ICEGUARD_DB_SCHEMA`; default
+  `public`). IceGuard can now share a database with another application instead of owning
+  `public`. Flyway creates the schema and Hibernate validates against it.
+  **Upgrading:** the migrations were de-qualified (`public.x` → `x`) to make this possible, so
+  their checksums changed. An existing database fails with `Migration checksum mismatch` until
+  it is realigned once with `quarkus.flyway.repair-at-start=true` (checksums only, no data
+  touched); drop the flag afterwards.
+
 ### Changed
 - Upgrade **Apache Iceberg 1.10.0 → 1.11.0** (backend, bundled Spark image and the default
   `--packages` coordinates); Parquet moves to **1.17.1** to match what Iceberg 1.11 pulls.
