@@ -254,6 +254,29 @@ export interface TableStatistics {
   importantProperties: Record<string, string>;
 }
 
+export interface TableRef {
+  name: string;
+  type: 'BRANCH' | 'TAG';
+  snapshotId: string;
+  maxRefAgeMs: number | null;
+  maxSnapshotAgeMs: number | null;
+  minSnapshotsToKeep: number | null;
+}
+
+export interface NessieReference {
+  name: string;
+  type: 'BRANCH' | 'TAG';
+  hash: string;
+}
+
+export interface TableVersioning {
+  currentSnapshotId: string | null;
+  refs: TableRef[];
+  snapshots: SnapshotInfo[];
+  nessieRef: string | null;
+  nessieReferences: NessieReference[];
+}
+
 export interface CommitActivity {
   hourlyUtc: number[];
   totalCommits: number;

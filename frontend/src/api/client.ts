@@ -35,6 +35,7 @@ import type {
   TableDetail,
   TableStatistics,
   CommitActivity,
+  TableVersioning,
   StorageOverview,
   StorageFiles,
   PartitionPage,
@@ -151,6 +152,12 @@ export const tableApi = {
     api
       .get<TableStatistics>(
         `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/statistics`,
+      )
+      .then((r) => r.data),
+  getVersioning: (catalogId: number, namespace: string, table: string) =>
+    api
+      .get<TableVersioning>(
+        `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/versioning`,
       )
       .then((r) => r.data),
   commitActivity: (catalogId: number, namespace: string, table: string) =>

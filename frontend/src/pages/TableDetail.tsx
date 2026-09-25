@@ -29,7 +29,7 @@ import {
   Bell, AlertTriangle, CheckCircle2, Mail, History, Activity,
   Layers, ChevronRight, ArrowLeft, Search, Gauge, Settings2,
   Network, GitCompare, ArrowRight, ArrowUp, ArrowDown, Minus, X,
-  CheckSquare,
+  CheckSquare, GitBranch,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -39,7 +39,7 @@ import { RewriteOptionsEditor, cleanRewriteParams } from '@/components/maintenan
 import { PinToDashboardButton } from '@/components/dashboard/widgets';
 import { AlertRuleForm } from './Alerts';
 import { TimelineTab } from './table-detail/TimelineTab';
-import { SnapshotsList } from './table-detail/SnapshotsList';
+import { VersioningTab } from './table-detail/VersioningTab';
 import { ClientPagination } from '@/components/common/ClientPagination';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { SchemaEvolutionCard, SchemaDiffGraphic } from '@/components/lineage/SchemaEvolutionView';
@@ -327,8 +327,8 @@ export function TableDetail() {
             )}
             Storage
           </TabsTrigger>
-          <TabsTrigger value="snapshots"><Camera className="mr-1.5 h-4 w-4 text-violet-500" /> Snapshots</TabsTrigger>
           <TabsTrigger value="data"><TableIcon className="mr-1.5 h-4 w-4 text-emerald-500" /> Data</TabsTrigger>
+          <TabsTrigger value="versioning"><GitBranch className="mr-1.5 h-4 w-4 text-emerald-500" /> Versioning</TabsTrigger>
           <TabsTrigger value="timeline"><History className="mr-1.5 h-4 w-4" /> Timeline</TabsTrigger>
           <TabsTrigger value="lineage"><Network className="mr-1.5 h-4 w-4 text-fuchsia-500" /> Evolution</TabsTrigger>
           <TabsTrigger value="maintenance"><Wrench className="mr-1.5 h-4 w-4" /> Maintenance</TabsTrigger>
@@ -359,16 +359,13 @@ export function TableDetail() {
           <StorageTab catalogId={catId} namespace={namespace!} table={table!} />
         </TabsContent>
 
-        {/* ── Snapshots ── */}
-        <TabsContent value="snapshots" className="mt-4">
-          <Card><CardHeader><CardTitle className="flex items-center gap-2"><Camera className="h-5 w-5 text-violet-500" /> Snapshots <Badge className="bg-violet-500/10 text-violet-400 border-0 ml-2">{snapshots?.length ?? 0}</Badge></CardTitle></CardHeader>
-            <CardContent>
-              <SnapshotsList catalogId={catId} namespace={namespace!} table={table!} snapshots={snapshots ?? []} />
-            </CardContent></Card>
-        </TabsContent>
-
         {/* ── Data ── */}
         <TabsContent value="data" className="mt-4"><DataSampleTab catalogId={catId} namespace={namespace!} table={table!} /></TabsContent>
+
+        {/* ── Versioning (branches · tags · snapshot graph) ── */}
+        <TabsContent value="versioning" className="mt-4">
+          <VersioningTab catalogId={catId} namespace={namespace!} table={table!} />
+        </TabsContent>
 
         {/* ── Timeline ── */}
         <TabsContent value="timeline" className="mt-4">
