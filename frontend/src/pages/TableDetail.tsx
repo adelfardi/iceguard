@@ -29,7 +29,7 @@ import {
   Bell, AlertTriangle, CheckCircle2, Mail, History, Activity,
   Layers, ChevronRight, ArrowLeft, Search, Gauge, Settings2,
   Network, GitCompare, ArrowRight, ArrowUp, ArrowDown, Minus, X,
-  Repeat, Zap, Paintbrush, Undo2, Eraser, Scissors, CheckSquare,
+  CheckSquare,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -39,6 +39,8 @@ import { RewriteOptionsEditor, cleanRewriteParams } from '@/components/maintenan
 import { PinToDashboardButton } from '@/components/dashboard/widgets';
 import { AlertRuleForm } from './Alerts';
 import { TimelineTab } from './table-detail/TimelineTab';
+import { SnapshotsList } from './table-detail/SnapshotsList';
+import { ClientPagination } from '@/components/common/ClientPagination';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { SchemaEvolutionCard, SchemaDiffGraphic } from '@/components/lineage/SchemaEvolutionView';
 import { AlertEventsList } from '@/components/alerts/AlertEventsList';
@@ -117,34 +119,7 @@ function computeStorageHealthStatus(
   return { tone, hasAlert: tone !== 'good' };
 }
 
-/* Snapshot operation → icon + color, kept in sync with the timeline's VIS_META. */
-const SNAPSHOT_OP_META: Record<string, { Icon: typeof Plus; className: string }> = {
-  append: { Icon: Plus, className: 'text-emerald-400' },
-  overwrite: { Icon: RefreshCw, className: 'text-blue-400' },
-  replace: { Icon: Repeat, className: 'text-cyan-400' },
-  delete: { Icon: Trash2, className: 'text-red-400' },
-  EXPIRE_SNAPSHOTS: { Icon: Camera, className: 'text-violet-400' },
-  REWRITE_MANIFESTS: { Icon: FileStack, className: 'text-amber-400' },
-  REWRITE_DATA_FILES: { Icon: Database, className: 'text-emerald-400' },
-  REWRITE_POSITION_DELETE_FILES: { Icon: Eraser, className: 'text-cyan-400' },
-  REWRITE_EQUALITY_DELETE_FILES: { Icon: Scissors, className: 'text-teal-400' },
-  REMOVE_ORPHAN_FILES: { Icon: Paintbrush, className: 'text-rose-400' },
-  ROLLBACK: { Icon: Undo2, className: 'text-blue-400' },
-};
-
-function SnapshotOperationBadge({ operation }: { operation: string }) {
-  const meta = SNAPSHOT_OP_META[operation] ?? { Icon: Zap, className: 'text-slate-400' };
-  const { Icon } = meta;
-  return (
-    <Badge className="bg-violet-500/10 text-violet-400 border-0 gap-1">
-      <Icon className={cn('h-3.5 w-3.5', meta.className)} />
-      {operation}
-    </Badge>
-  );
-}
-
 const DATA_PAGE_SIZE = 10;
-const SNAPSHOT_PAGE_SIZE = 10;
 const STORAGE_FILES_PAGE_SIZE = 25;
 
 export function TableDetail() {
@@ -155,8 +130,6 @@ export function TableDetail() {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [newTableName, setNewTableName] = useState('');
-  const [detailSnapshot, setDetailSnapshot] = useState<SnapshotInfo | null>(null);
-  const [snapshotPage, setSnapshotPage] = useState(0);
 
   const { data: tableDetail, isLoading, error: tableError } = useQuery({
     queryKey: ['table', catId, namespace, table],
@@ -193,20 +166,6 @@ export function TableDetail() {
     ? computeStorageHealthStatus(storageData, storageThresholds ?? DEFAULT_HEALTH_THRESHOLDS)
     : null;
 
-  // Most recent first (descending by commit time).
-  const snapshotList = React.useMemo(
-    () => [...(snapshots ?? [])].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
-    [snapshots],
-  );
-  React.useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(snapshotList.length / SNAPSHOT_PAGE_SIZE) - 1);
-    if (snapshotPage > maxPage) setSnapshotPage(maxPage);
-  }, [snapshotList.length, snapshotPage]);
-  const pagedSnapshots = snapshotList.slice(
-    snapshotPage * SNAPSHOT_PAGE_SIZE,
-    (snapshotPage + 1) * SNAPSHOT_PAGE_SIZE,
-  );
-
   const deleteMutation = useMutation({
     mutationFn: () => tableApi.drop(catId, namespace!, table!),
     onSuccess: () => { toast.success('Table deleted'); queryClient.invalidateQueries({ queryKey: ['tables', catId, namespace] }); navigate(`/catalogs/${catId}`); },
@@ -216,17 +175,6 @@ export function TableDetail() {
     mutationFn: (newName: string) => tableApi.rename(catId, namespace!, table!, { newName }),
     onSuccess: (_data, newName) => { toast.success(`Table renamed to ${newName}`); queryClient.invalidateQueries({ queryKey: ['tables', catId, namespace] }); setRenameDialogOpen(false); navigate(`/catalogs/${catId}/namespaces/${namespace}/tables/${newName}`); },
     onError: (err: Error) => toast.error(`Failed to rename: ${apiErrorMessage(err)}`),
-  });
-  const rollbackMutation = useMutation({
-    mutationFn: (snapshotId: string) => maintenanceApi.rollback(catId, namespace!, table!, { snapshotId }),
-    onSuccess: () => {
-      toast.success('Table positioned on snapshot');
-      queryClient.invalidateQueries({ queryKey: ['snapshots', catId, namespace, table] });
-      queryClient.invalidateQueries({ queryKey: ['table', catId, namespace, table] });
-      queryClient.invalidateQueries({ queryKey: ['table-stats', catId, namespace, table] });
-      setDetailSnapshot(null);
-    },
-    onError: (err: Error) => toast.error(`Rollback failed: ${apiErrorMessage(err)}`),
   });
 
   if (isLoading) {
@@ -415,62 +363,8 @@ export function TableDetail() {
         <TabsContent value="snapshots" className="mt-4">
           <Card><CardHeader><CardTitle className="flex items-center gap-2"><Camera className="h-5 w-5 text-violet-500" /> Snapshots <Badge className="bg-violet-500/10 text-violet-400 border-0 ml-2">{snapshots?.length ?? 0}</Badge></CardTitle></CardHeader>
             <CardContent>
-              {snapshots?.length === 0 ? <p className="text-muted-foreground py-4 text-center">No snapshots</p> : (
-                <>
-                <UiTable><TableHeader><TableRow><TableHead>Snapshot ID</TableHead><TableHead>Timestamp</TableHead><TableHead>Operation</TableHead><TableHead>Added Files</TableHead><TableHead>Added Records</TableHead><TableHead className="text-right"></TableHead></TableRow></TableHeader>
-                  <TableBody>{pagedSnapshots.map((snap) => (
-                    <TableRow key={snap.snapshotId}>
-                      <TableCell className="font-mono text-sm text-blue-400">{snap.snapshotId}</TableCell>
-                      <TableCell className="text-muted-foreground">{new Date(snap.timestamp).toLocaleString()}</TableCell>
-                      <TableCell><SnapshotOperationBadge operation={snap.operation} /></TableCell>
-                      <TableCell className="text-emerald-400 font-medium">{snap.summary['added-data-files'] ?? '-'}</TableCell>
-                      <TableCell className="text-amber-400 font-medium">{snap.summary['added-records'] ?? '-'}</TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="outline" size="sm" onClick={() => setDetailSnapshot(snap)}>Details</Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}</TableBody></UiTable>
-                <ClientPagination page={snapshotPage} pageSize={SNAPSHOT_PAGE_SIZE} total={snapshotList.length} onPageChange={setSnapshotPage} />
-                </>
-                )}
+              <SnapshotsList catalogId={catId} namespace={namespace!} table={table!} snapshots={snapshots ?? []} />
             </CardContent></Card>
-
-          {/* Snapshot detail dialog */}
-          <Dialog open={detailSnapshot !== null} onOpenChange={(o) => { if (!o) setDetailSnapshot(null); }}>
-            <DialogContent className="max-w-3xl">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2"><Camera className="h-4 w-4 text-violet-500" /> Snapshot details</DialogTitle>
-              </DialogHeader>
-              {detailSnapshot && (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-                    <span className="text-muted-foreground">Snapshot ID</span><span className="font-mono break-all">{detailSnapshot.snapshotId}</span>
-                    <span className="text-muted-foreground">Parent</span><span className="font-mono break-all">{detailSnapshot.parentSnapshotId ?? '—'}</span>
-                    <span className="text-muted-foreground">Operation</span><span><SnapshotOperationBadge operation={detailSnapshot.operation} /></span>
-                    <span className="text-muted-foreground">Timestamp</span><span>{new Date(detailSnapshot.timestamp).toLocaleString()}</span>
-                  </div>
-                  <div>
-                    <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Summary</p>
-                    <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border p-2">
-                      {Object.entries(detailSnapshot.summary).map(([k, v]) => (
-                        <div key={k} className="flex items-start justify-between gap-3 text-xs">
-                          <span className="shrink-0 font-mono text-muted-foreground">{k}</span>
-                          <span className="min-w-0 break-all text-right font-mono">{String(v)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex justify-end pt-1">
-                    <Button variant="destructive" disabled={rollbackMutation.isPending}
-                      onClick={() => rollbackMutation.mutate(detailSnapshot.snapshotId)}>
-                      {rollbackMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      <History className="mr-2 h-4 w-4" /> Position table on this snapshot
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </DialogContent>
-          </Dialog>
         </TabsContent>
 
         {/* ── Data ── */}
@@ -1239,29 +1133,6 @@ function PartitionsTab({ catalogId, namespace, table, tableDetail }: {
 /* ═══════════════════════ Data Sample Tab ═══════════════════════ */
 
 const ROW_LIMITS = [10, 25, 50, 100, 500] as const;
-
-function ClientPagination({
-  page, pageSize, total, onPageChange,
-}: {
-  page: number; pageSize: number; total: number; onPageChange: (page: number) => void;
-}) {
-  if (total <= pageSize) return null;
-  const from = page * pageSize + 1;
-  const to = Math.min(total, (page + 1) * pageSize);
-  return (
-    <div className="flex items-center justify-between pt-3 text-xs text-muted-foreground">
-      <span>{from.toLocaleString()}–{to.toLocaleString()} of {total.toLocaleString()}</span>
-      <div className="flex items-center gap-1">
-        <Button variant="outline" size="sm" className="h-7" disabled={page === 0} onClick={() => onPageChange(Math.max(0, page - 1))}>
-          <ArrowLeft className="h-3.5 w-3.5" /> Prev
-        </Button>
-        <Button variant="outline" size="sm" className="h-7" disabled={to >= total} onClick={() => onPageChange(page + 1)}>
-          Next <ChevronRight className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 function DataSampleTab({ catalogId, namespace, table }: { catalogId: number; namespace: string; table: string }) {
   const [fetchLimit, setFetchLimit] = useState(10);
