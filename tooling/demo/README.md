@@ -48,3 +48,22 @@ README.md → <img src=".../releases/download/<tag>/demo.gif" ...>
 
 `docs/demo.gif` / `docs/demo.mp4` and `tooling/demo/out/` are git-ignored — only the
 scenario (`demo.mjs`) and renderer (`render.mjs`) are committed.
+
+## 3. AI voice-over (for YouTube)
+
+Adds an English narration to `docs/demo.mp4` with [Kokoro](https://github.com/thewh1teagle/kokoro-onnx),
+an open-weight TTS model that runs **locally on the CPU** — no API key, nothing leaves the machine.
+Requires [uv](https://docs.astral.sh/uv/) (Python deps are declared inline in `narrate.py`).
+
+```bash
+npm run narrate:models        # once: downloads the Kokoro model (~350 MB) into models/
+npm run narrate               # -> out/demo-narrated.mp4 + out/demo-narrated.srt
+```
+
+- The script lives in `narration.json`: `voice`, `speed`, and one `{ start, text }` per scene
+  (`start` in seconds of `docs/demo.mp4`). If a line runs into the next scene the tool prints how
+  far it was pushed back: shorten that text or move its `start`.
+- The last frame is held for `outroSeconds` so the closing line can finish.
+- Audio is loudness-normalised (-16 LUFS), 48 kHz stereo. Upload the `.srt` to YouTube as captions.
+- Voices: `am_michael` (default), `am_adam`, `af_heart`, `af_bella`, `bm_george`, … (see the Kokoro voice list).
+- Re-record the demo first (steps 1–2) if the UI changed, then re-time the `start` values.

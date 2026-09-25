@@ -7,6 +7,8 @@
     "ffmpeg-static": "^5.2.0"
   },
   "scripts": {
-    "render": "node render.mjs"
+    "render": "node render.mjs",
+    "narrate": "uv run narrate.py --ffmpeg node_modules/ffmpeg-static/ffmpeg",
+    "narrate:models": "mkdir -p models && cd models && for f in kokoro-v1.0.onnx voices-v1.0.bin; do [ -f $f ] || curl -fL -o $f https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/$f; done"
   }
 }
