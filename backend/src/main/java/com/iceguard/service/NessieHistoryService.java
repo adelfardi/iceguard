@@ -3,6 +3,7 @@ package com.iceguard.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.iceguard.dto.response.NessieCommitResponse;
+import com.iceguard.dto.response.NessieReferenceResponse;
 import com.iceguard.model.CatalogConfig;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -71,6 +72,48 @@ public class NessieHistoryService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to fetch Nessie history: " + e.getMessage(), e);
         }
+    }
+
+    /** The catalog-level Nessie references (branches and tags), via {@code GET /api/v2/trees}. */
+    public List<NessieReferenceResponse> listReferences(CatalogConfig cfg) {
+        String url = deriveNessieApiBase(cfg.uri) + "/trees?maxRecords=200";
+        HttpRequest.Builder req = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(8))
+                .GET();
+        String auth = authHeader(cfg);
+        if (auth != null) req.header("Authorization", auth);
+
+        try {
+            HttpResponse<String> resp = http.sendAsync(req.build(), HttpResponse.BodyHandlers.ofString())
+                    .orTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                    .get();
+            if (resp.statusCode() / 100 != 2) {
+                throw new RuntimeException("Nessie references HTTP " + resp.statusCode() + " for " + url
+                        + " — " + truncate(resp.body()));
+            }
+            return parseReferences(objectMapper.readTree(resp.body()));
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to fetch Nessie references: " + e.getMessage(), e);
+        }
+    }
+
+    /** Pure parser (no I/O) for the {@code /trees} payload. */
+    static List<NessieReferenceResponse> parseReferences(JsonNode root) {
+        List<NessieReferenceResponse> out = new ArrayList<>();
+        for (JsonNode ref : root.path("references")) {
+            out.add(new NessieReferenceResponse(
+                    ref.path("name").asText(null),
+                    ref.path("type").asText(null),
+                    ref.path("hash").asText(null)));
+        }
+        return out;
+    }
+
+    /** The Nessie reference this catalog is bound to. */
+    public String activeRef(CatalogConfig cfg) {
+        return nessieRef(cfg);
     }
 
     /**

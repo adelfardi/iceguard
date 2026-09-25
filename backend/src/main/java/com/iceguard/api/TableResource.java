@@ -14,6 +14,7 @@ import com.iceguard.dto.response.StorageFilesResponse;
 import com.iceguard.dto.response.StorageOverviewResponse;
 import com.iceguard.dto.response.TableResponse;
 import com.iceguard.dto.response.TableStatisticsResponse;
+import com.iceguard.dto.response.TableVersioningResponse;
 import com.iceguard.service.NessieHistoryService;
 import com.iceguard.service.TableService;
 import jakarta.inject.Inject;
@@ -127,6 +128,14 @@ public class TableResource {
                                                  @PathParam("namespace") String namespace,
                                                  @PathParam("table") String table) {
         return tableService.listSnapshots(catalogId, namespace, table);
+    }
+
+    @GET
+    @Path("/{table}/versioning")
+    public TableVersioningResponse getVersioning(@PathParam("catalogId") Long catalogId,
+                                                 @PathParam("namespace") String namespace,
+                                                 @PathParam("table") String table) {
+        return tableService.getVersioning(catalogId, namespace, table);
     }
 
     @GET

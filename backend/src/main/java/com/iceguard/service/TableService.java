@@ -309,6 +309,41 @@ public class TableService {
     }
 
     /**
+     * Versioning state: the table's Iceberg refs (branches/tags) and the snapshot DAG they point
+     * into. Snapshots come from {@link #listSnapshots} so Nessie tables get their reconstructed
+     * history; Nessie catalogs additionally expose their catalog-level references.
+     */
+    public TableVersioningResponse getVersioning(Long catalogId, String namespace, String tableName) {
+        Table table = loadTable(catalogId, namespace, tableName);
+        List<TableRefResponse> refs = table.refs().entrySet().stream()
+                .map(e -> {
+                    SnapshotRef r = e.getValue();
+                    return new TableRefResponse(e.getKey(), r.type().name(), r.snapshotId(),
+                            r.maxRefAgeMs(), r.maxSnapshotAgeMs(), r.minSnapshotsToKeep());
+                })
+                .sorted(Comparator.comparing((TableRefResponse r) -> !SnapshotRef.MAIN_BRANCH.equals(r.name()))
+                        .thenComparing(TableRefResponse::type)
+                        .thenComparing(TableRefResponse::name))
+                .toList();
+        Snapshot current = table.currentSnapshot();
+
+        String nessieRef = null;
+        List<NessieReferenceResponse> nessieRefs = List.of();
+        CatalogConfig cfg = CatalogConfig.findById(catalogId);
+        if (cfg != null && isNessie(cfg)) {
+            nessieRef = nessieHistoryService.activeRef(cfg);
+            try {
+                nessieRefs = nessieHistoryService.listReferences(cfg);
+            } catch (Exception e) {
+                // Best effort: the table view still works without the catalog references.
+            }
+        }
+
+        return new TableVersioningResponse(current != null ? current.snapshotId() : null, refs,
+                listSnapshots(catalogId, namespace, tableName), nessieRef, nessieRefs);
+    }
+
+    /**
      * Off-peak detection from the available snapshots only: bucket commit timestamps by hour-of-day
      * (UTC) and find the quietest contiguous window. Reuses {@link #listSnapshots} so it benefits
      * from the Nessie commit-log reconstruction.
