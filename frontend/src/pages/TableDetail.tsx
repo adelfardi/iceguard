@@ -2195,7 +2195,8 @@ function partFieldInputType(kind: PartFieldKind): string {
 const pad2 = (n: number) => String(n).padStart(2, '0');
 // Iceberg's rewrite_data_files `where` parser expects string/date literals in DOUBLE quotes
 // (e.g. where => 'created_at >= "2026-02-01"'). Single-quoted literals get stripped and misparsed.
-const sqlStr = (v: string) => `"${v.replace(/"/g, '\\"')}"`;
+// Escape backslashes first, so a value ending in "\" cannot escape the closing quote.
+const sqlStr = (v: string) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 function nextDayISO(d: string): string {
   const dt = new Date(`${d}T00:00:00Z`);
   dt.setUTCDate(dt.getUTCDate() + 1);

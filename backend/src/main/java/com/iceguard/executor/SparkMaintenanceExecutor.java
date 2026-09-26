@@ -191,11 +191,10 @@ public class SparkMaintenanceExecutor implements MaintenanceExecutor {
                                              Map<String, String> namedArgs, Map<String, String> options) {
         StringBuilder sb = new StringBuilder("CALL ")
                 .append(catalogName)
-                .append(".system.rewrite_data_files(table => '")
-                .append(namespace.replace("'", "''")).append(".").append(table.replace("'", "''"))
-                .append("'");
+                .append(".system.rewrite_data_files(table => ")
+                .append(sqlLiteral(namespace + "." + table));
         for (var e : namedArgs.entrySet()) {
-            sb.append(", ").append(e.getKey()).append(" => '").append(e.getValue().replace("'", "''")).append("'");
+            sb.append(", ").append(e.getKey()).append(" => ").append(sqlLiteral(e.getValue()));
         }
         if (!options.isEmpty()) {
             sb.append(", options => map(");
@@ -203,9 +202,7 @@ public class SparkMaintenanceExecutor implements MaintenanceExecutor {
             for (var e : options.entrySet()) {
                 if (!first) sb.append(", ");
                 first = false;
-                sb.append("'").append(e.getKey().replace("'", "''")).append("'")
-                  .append(", ")
-                  .append("'").append(e.getValue().replace("'", "''")).append("'");
+                sb.append(sqlLiteral(e.getKey())).append(", ").append(sqlLiteral(e.getValue()));
             }
             sb.append(")");
         }
@@ -267,22 +264,29 @@ public class SparkMaintenanceExecutor implements MaintenanceExecutor {
         return cmd;
     }
 
+    /**
+     * Quotes a value as a Spark SQL string literal. Spark unescapes backslashes inside literals
+     * (spark.sql.parser.escapedStringLiterals=false) and reads {@code 'a''b'} as two adjacent
+     * literals ({@code ab}), so doubling quotes would silently drop them: escape the backslash
+     * first, then the quote. Values such as a rewrite {@code where} then reach Iceberg verbatim.
+     */
+    static String sqlLiteral(String value) {
+        return "'" + value.replace("\\", "\\\\").replace("'", "\\'") + "'";
+    }
+
     /** Builds {@code CALL <cat>.system.<procedure>(table => 'ns.table'[, options => map(...)])}. */
     private String buildCall(String procedure, String namespace, String table, Map<String, String> options) {
         StringBuilder sb = new StringBuilder("CALL ")
                 .append(catalogName)
-                .append(".system.").append(procedure).append("(table => '")
-                .append(namespace.replace("'", "''")).append(".").append(table.replace("'", "''"))
-                .append("'");
+                .append(".system.").append(procedure).append("(table => ")
+                .append(sqlLiteral(namespace + "." + table));
         if (!options.isEmpty()) {
             sb.append(", options => map(");
             boolean first = true;
             for (var e : options.entrySet()) {
                 if (!first) sb.append(", ");
                 first = false;
-                sb.append("'").append(e.getKey().replace("'", "''")).append("'")
-                  .append(", ")
-                  .append("'").append(e.getValue().replace("'", "''")).append("'");
+                sb.append(sqlLiteral(e.getKey())).append(", ").append(sqlLiteral(e.getValue()));
             }
             sb.append(")");
         }
