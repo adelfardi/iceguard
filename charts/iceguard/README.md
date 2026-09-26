@@ -10,21 +10,21 @@ Postgres is a required dependency rather than something IceGuard ships.
 The UI's nginx reverse-proxies `/api/` to the backend Service, so the browser only ever talks
 to one origin and no cross-origin setup is needed for normal use.
 
-Images currently default to a **snapshot built from this working tree** (Iceberg 1.11), which is
-**not published to GHCR** — load it into your nodes before installing, or switch the tags back to
-a released version:
+Images default to the published **0.3.0** release on GHCR:
 
-| Component | Image | Released alternative |
-|---|---|---|
-| Backend | `ghcr.io/adelfardi/iceguard-backend:0.3.0-SNAPSHOT` | `:0.2.0` |
-| Frontend | `ghcr.io/adelfardi/iceguard-frontend:0.3.0-SNAPSHOT` | `:0.2.0` |
+| Component | Image |
+|---|---|
+| Backend | `ghcr.io/adelfardi/iceguard-backend:0.3.0` (bundles Spark) |
+| Frontend | `ghcr.io/adelfardi/iceguard-frontend:0.3.0` |
 
-Build and load the snapshot (kind shown; for another cluster, push it to a registry you control):
+To run a build of your own working tree instead (kind shown; for another cluster, push it to a
+registry you control), build, load, then override the tags:
 
 ```bash
-docker build -t ghcr.io/adelfardi/iceguard-backend:0.3.0-SNAPSHOT  -f backend/Dockerfile  backend
-docker build -t ghcr.io/adelfardi/iceguard-frontend:0.3.0-SNAPSHOT -f frontend/Dockerfile frontend
-kind load docker-image ghcr.io/adelfardi/iceguard-{backend,frontend}:0.3.0-SNAPSHOT
+docker build -t ghcr.io/adelfardi/iceguard-backend:dev  -f backend/Dockerfile  backend
+docker build -t ghcr.io/adelfardi/iceguard-frontend:dev -f frontend/Dockerfile frontend
+kind load docker-image ghcr.io/adelfardi/iceguard-{backend,frontend}:dev
+# helm install … --set image.tag=dev --set backend.image.tag=dev --set frontend.image.tag=dev
 ```
 
 ```bash
@@ -123,11 +123,11 @@ kubectl apply -n iceguard -f iceguard.yaml
 | Key | Default | Description |
 |---|---|---|
 | `image.registry` | `ghcr.io/adelfardi` | Fallback namespace when a component repository is empty |
-| `image.tag` | `0.3.0-SNAPSHOT` | Fallback tag; empty ⇒ the chart `appVersion` |
+| `image.tag` | `0.3.0` | Fallback tag; empty ⇒ the chart `appVersion` |
 | `image.pullPolicy` | `IfNotPresent` | Keep this for a locally loaded snapshot — `Always` would try to pull it |
 | `image.pullSecrets` | `[]` | e.g. `[{name: my-ghcr-creds}]` for a private registry |
-| `backend.image.repository` / `.tag` | `ghcr.io/adelfardi/iceguard-backend` / `0.3.0-SNAPSHOT` | |
-| `frontend.image.repository` / `.tag` | `ghcr.io/adelfardi/iceguard-frontend` / `0.3.0-SNAPSHOT` | |
+| `backend.image.repository` / `.tag` | `ghcr.io/adelfardi/iceguard-backend` / `0.3.0` | |
+| `frontend.image.repository` / `.tag` | `ghcr.io/adelfardi/iceguard-frontend` / `0.3.0` | |
 
 ### Database (required)
 

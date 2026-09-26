@@ -6,13 +6,10 @@
 
 # Applied to both components unless overridden per component.
 #
-# NOTE: 0.3.0-SNAPSHOT is built from this working tree (Iceberg 1.11) and is NOT published
-# to GHCR — load it into your nodes first (`kind load docker-image …`, or push it to your own
-# registry). Switch back to a released tag (0.2.0, or "" to follow the chart appVersion) for
-# a normal install.
+# Defaults to the published 0.3.0 release on GHCR ("" follows the chart appVersion).
 image:
   registry: ghcr.io/adelfardi
-  tag: "0.3.0-SNAPSHOT"
+  tag: "0.3.0"
   pullPolicy: IfNotPresent
   # Names of pre-created docker-registry secrets, e.g. [{name: my-ghcr-creds}]
   pullSecrets: []
@@ -36,7 +33,7 @@ backend:
   replicaCount: 1
   image:
     repository: ghcr.io/adelfardi/iceguard-backend
-    tag: "0.3.0-SNAPSHOT"
+    tag: "0.3.0"
     pullPolicy: ""
 
   service:
@@ -124,7 +121,7 @@ frontend:
   replicaCount: 1
   image:
     repository: ghcr.io/adelfardi/iceguard-frontend
-    tag: "0.3.0-SNAPSHOT"
+    tag: "0.3.0"
     pullPolicy: ""
 
   service:

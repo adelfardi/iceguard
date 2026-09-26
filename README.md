@@ -180,9 +180,7 @@ The **REST Catalog** and **Nessie** demo catalogs work out of the box on MinIO.
 
 A chart lives in [`charts/iceguard`](charts/iceguard). Like Level 1 above it deploys the two
 IceGuard services only — **frontend + backend** — against a **PostgreSQL you provide**
-(images default to `ghcr.io/adelfardi/iceguard-{frontend,backend}:0.3.0-SNAPSHOT`, built from
-source; add `--set image.tag=0.2.0 --set backend.image.tag=0.2.0 --set frontend.image.tag=0.2.0`
-for the last published release):
+(images default to the published `ghcr.io/adelfardi/iceguard-{frontend,backend}:0.3.0`):
 
 ```bash
 helm install iceguard ./charts/iceguard -n iceguard --create-namespace \
