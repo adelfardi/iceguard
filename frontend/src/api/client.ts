@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { DEMO_MODE, DEMO_READ_ONLY_MESSAGE } from '@/lib/demo';
 import type {
   DashboardWidget,
   CreateDashboardWidgetRequest,
@@ -47,6 +48,18 @@ const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
 });
+
+// Read-only demo: refuse writes before they leave the browser, so every action ends in the same
+// clear message instead of the proxy's 403.
+if (DEMO_MODE) {
+  api.interceptors.request.use((config) => {
+    const method = (config.method ?? 'get').toLowerCase();
+    if (method !== 'get' && method !== 'head' && method !== 'options') {
+      return Promise.reject(new Error(DEMO_READ_ONLY_MESSAGE));
+    }
+    return config;
+  });
+}
 
 /** Extract the backend's error message ({ message } body) instead of axios' generic
  *  "Request failed with status code 5xx". Falls back to the raw error message. */

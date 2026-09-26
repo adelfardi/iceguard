@@ -25,6 +25,10 @@ All notable changes to this project are documented here. The format is based on
   downstream tasks), per-task retries with a delay between attempts, and a graphical cron
   builder with a next-run preview.
 - **Timeline**: clicking a Nessie snapshot fetches its real Iceberg summary on demand.
+- **Public read-only demo mode**: `ICEGUARD_DEMO_MODE=true` on the frontend container (read at
+  startup, served as `/config.js`, so it works with the published image) shows a "read-only demo"
+  banner and refuses writes client-side with a clear message. `VITE_DEMO_MODE=true` does the same
+  in local dev. Pair it with a server-side guard (e.g. a reverse proxy allowing only `GET` on `/api`).
 - **Demo video voice-over** (`tooling/demo`, `npm run narrate`): English narration generated
   locally with Kokoro TTS, muxed onto the demo video with matching `.srt` captions.
 - **Helm chart** (`charts/iceguard`) to deploy on Kubernetes: frontend + backend against a

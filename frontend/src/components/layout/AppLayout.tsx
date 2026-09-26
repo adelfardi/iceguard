@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet } from 'react-router-dom';
-import { Menu } from 'lucide-react';
+import { Eye, Menu } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Breadcrumbs } from './Breadcrumbs';
 import { ThemeToggle } from './ThemeToggle';
@@ -9,6 +9,7 @@ import { Toaster } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { DEMO_MODE } from '@/lib/demo';
 
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -26,6 +27,17 @@ export function AppLayout() {
         </Sheet>
 
         <div className="flex flex-1 flex-col overflow-hidden min-w-0">
+          {DEMO_MODE && (
+            <div role="status" className="flex items-center justify-center gap-2 bg-primary px-4 py-1.5 text-center text-xs font-medium text-primary-foreground">
+              <Eye className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                Public read-only demo: browse freely, changes are disabled.{' '}
+                <a href="https://github.com/adelfardi/iceguard" target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                  Get IceGuard on GitHub
+                </a>
+              </span>
+            </div>
+          )}
           <header className="flex h-14 items-center gap-3 bg-background/80 backdrop-blur-xl px-4 md:px-6 border-b border-border/40">
             <Button
               variant="ghost"

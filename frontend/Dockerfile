@@ -32,4 +32,6 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # `a+rX` adds read for everyone plus traverse on directories only (never +x on files).
 RUN chmod -R a+rX /etc/nginx/templates /usr/share/nginx/html
 ENV BACKEND_URL=http://backend:8080
+# "true" serves the public read-only demo UI (see /config.js in nginx.conf.template).
+ENV ICEGUARD_DEMO_MODE=false
 EXPOSE 80
