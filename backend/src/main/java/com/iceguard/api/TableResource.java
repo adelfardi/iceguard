@@ -14,6 +14,7 @@ import com.iceguard.dto.response.StorageFilesResponse;
 import com.iceguard.dto.response.StorageOverviewResponse;
 import com.iceguard.dto.response.TableResponse;
 import com.iceguard.dto.response.TableStatisticsResponse;
+import com.iceguard.dto.response.TableVersioningResponse;
 import com.iceguard.service.NessieHistoryService;
 import com.iceguard.service.TableService;
 import jakarta.inject.Inject;
@@ -130,6 +131,14 @@ public class TableResource {
     }
 
     @GET
+    @Path("/{table}/versioning")
+    public TableVersioningResponse getVersioning(@PathParam("catalogId") Long catalogId,
+                                                 @PathParam("namespace") String namespace,
+                                                 @PathParam("table") String table) {
+        return tableService.getVersioning(catalogId, namespace, table);
+    }
+
+    @GET
     @Path("/{table}/statistics")
     public TableStatisticsResponse getStatistics(@PathParam("catalogId") Long catalogId,
                                                   @PathParam("namespace") String namespace,
@@ -201,6 +210,37 @@ public class TableResource {
                                           @PathParam("table") String table,
                                           @QueryParam("limit") @DefaultValue("100") int limit) {
         return tableService.sampleData(catalogId, namespace, table, limit);
+    }
+
+    @GET
+    @Path("/{table}/nessie-snapshot/{snapshotId}")
+    public com.iceguard.dto.response.NessieSnapshotDetailResponse getNessieSnapshotDetail(
+            @PathParam("catalogId") Long catalogId,
+            @PathParam("namespace") String namespace,
+            @PathParam("table") String table,
+            @PathParam("snapshotId") long snapshotId) {
+        return tableService.nessieSnapshotDetail(catalogId, namespace, table, snapshotId);
+    }
+
+    @GET
+    @Path("/{table}/storage/hot-partitions")
+    public java.util.List<com.iceguard.dto.response.HotPartitionResponse> getHotPartitions(
+            @PathParam("catalogId") Long catalogId,
+            @PathParam("namespace") String namespace,
+            @PathParam("table") String table,
+            @QueryParam("windowHours") @DefaultValue("6") int windowHours) {
+        return tableService.hotPartitions(catalogId, namespace, table, windowHours);
+    }
+
+    @GET
+    @Path("/{table}/storage/file-data")
+    public DataSampleResponse getFileData(@PathParam("catalogId") Long catalogId,
+                                          @PathParam("namespace") String namespace,
+                                          @PathParam("table") String table,
+                                          @QueryParam("path") String path,
+                                          @QueryParam("content") String content,
+                                          @QueryParam("limit") @DefaultValue("100") int limit) {
+        return tableService.readFileData(catalogId, namespace, table, path, content, limit);
     }
 
     @POST

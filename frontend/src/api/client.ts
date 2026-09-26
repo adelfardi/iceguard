@@ -1,5 +1,8 @@
 import axios from 'axios';
+import { DEMO_MODE, DEMO_READ_ONLY_MESSAGE } from '@/lib/demo';
 import type {
+  DashboardWidget,
+  CreateDashboardWidgetRequest,
   AlertEventResponse,
   AlertRuleResponse,
   CatalogConfig,
@@ -33,6 +36,7 @@ import type {
   TableDetail,
   TableStatistics,
   CommitActivity,
+  TableVersioning,
   StorageOverview,
   StorageFiles,
   PartitionPage,
@@ -44,6 +48,18 @@ const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
 });
+
+// Read-only demo: refuse writes before they leave the browser, so every action ends in the same
+// clear message instead of the proxy's 403.
+if (DEMO_MODE) {
+  api.interceptors.request.use((config) => {
+    const method = (config.method ?? 'get').toLowerCase();
+    if (method !== 'get' && method !== 'head' && method !== 'options') {
+      return Promise.reject(new Error(DEMO_READ_ONLY_MESSAGE));
+    }
+    return config;
+  });
+}
 
 /** Extract the backend's error message ({ message } body) instead of axios' generic
  *  "Request failed with status code 5xx". Falls back to the raw error message. */
@@ -151,6 +167,12 @@ export const tableApi = {
         `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/statistics`,
       )
       .then((r) => r.data),
+  getVersioning: (catalogId: number, namespace: string, table: string) =>
+    api
+      .get<TableVersioning>(
+        `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/versioning`,
+      )
+      .then((r) => r.data),
   commitActivity: (catalogId: number, namespace: string, table: string) =>
     api
       .get<CommitActivity>(
@@ -196,7 +218,27 @@ export const tableApi = {
         { params: { ...params, search: params.search || undefined } },
       )
       .then((r) => r.data),
-  getStorageFiles: (catalogId: number, namespace: string, table: string, partition: string | null, limit = 500) =>
+  getNessieSnapshotDetail: (catalogId: number, namespace: string, table: string, snapshotId: string) =>
+    api
+      .get<{ available: boolean; operation: string | null; summary: Record<string, string>; message: string | null }>(
+        `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/nessie-snapshot/${snapshotId}`,
+      )
+      .then((r) => r.data),
+  getHotPartitions: (catalogId: number, namespace: string, table: string, windowHours = 6) =>
+    api
+      .get<{ partition: string; commits: number }[]>(
+        `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/storage/hot-partitions`,
+        { params: { windowHours } },
+      )
+      .then((r) => r.data),
+  getFileData: (catalogId: number, namespace: string, table: string, path: string, content?: string, limit = 100) =>
+    api
+      .get<DataSampleResponse>(
+        `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/storage/file-data`,
+        { params: { path, content, limit } },
+      )
+      .then((r) => r.data),
+  getStorageFiles: (catalogId: number, namespace: string, table: string, partition: string | null, limit = 0) =>
     api
       .get<StorageFiles>(
         `/catalogs/${catalogId}/namespaces/${namespace}/tables/${table}/storage/files`,
@@ -369,4 +411,16 @@ export const pipelineApi = {
     api.get<PipelineRunResponse[]>(`/pipelines/runs/recent?limit=${limit}`).then((r) => r.data),
   getRun: (runId: number) =>
     api.get<PipelineRunResponse>(`/pipelines/runs/${runId}`).then((r) => r.data),
+  rerunRun: (runId: number) =>
+    api.post<PipelineRunResponse>(`/pipelines/runs/${runId}/rerun`).then((r) => r.data),
+  retryTask: (runId: number, taskRunId: number) =>
+    api.post<PipelineRunResponse>(`/pipelines/runs/${runId}/tasks/${taskRunId}/retry`).then((r) => r.data),
+};
+
+export const dashboardWidgetApi = {
+  list: () => api.get<DashboardWidget[]>('/dashboard-widgets').then((r) => r.data),
+  create: (data: CreateDashboardWidgetRequest) =>
+    api.post<DashboardWidget>('/dashboard-widgets', data).then((r) => r.data),
+  delete: (id: number) => api.delete(`/dashboard-widgets/${id}`),
+  reorder: (ids: number[]) => api.put('/dashboard-widgets/reorder', ids),
 };

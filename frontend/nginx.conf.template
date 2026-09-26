@@ -19,6 +19,14 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # Runtime config read by index.html before the app boots. ${ICEGUARD_DEMO_MODE} is rendered
+    # by envsubst at container start, so a published image can run as the public read-only demo.
+    location = /config.js {
+        default_type application/javascript;
+        add_header Cache-Control "no-store";
+        return 200 'window.__ICEGUARD_CONFIG__ = { demoMode: "${ICEGUARD_DEMO_MODE}" === "true" };';
+    }
+
     # SPA fallback: serve index.html for client-side routes.
     location / {
         try_files $uri $uri/ /index.html;

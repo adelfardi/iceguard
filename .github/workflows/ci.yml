@@ -29,6 +29,51 @@ jobs:
       - name: Build & test
         run: mvn -B -ntp package
 
+  chart:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v4
+      # The database is required, so lint with one set — otherwise lint only reports the
+      # deliberate "no database" failure. That case is asserted separately below.
+      - name: Lint
+        run: |
+          helm lint charts/iceguard \
+            --set database.host=db.example.com --set database.password=secret
+      # Render the value combinations that take different template branches, and
+      # validate the output against the Kubernetes API schemas.
+      - name: Install kubeconform
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | tar -xz -C /usr/local/bin kubeconform
+      - name: Render & validate
+        run: |
+          set -euo pipefail
+          # The database is mandatory, so every combination carries one.
+          render() {
+            helm template ci charts/iceguard \
+              --set database.host=db.example.com --set database.password=secret "$@" \
+              | kubeconform -strict -summary -kubernetes-version 1.31.0
+          }
+          echo "== defaults"; render
+          echo "== ingress + network policy + HA"; render \
+            --set ingress.enabled=true \
+            --set networkPolicy.enabled=true \
+            --set backend.replicaCount=2 --set backend.podDisruptionBudget.enabled=true \
+            --set frontend.replicaCount=2 --set frontend.podDisruptionBudget.enabled=true
+          echo "== existing secret + JDBC URL + OIDC"; render \
+            --set database.existingSecret=my-db \
+            --set database.usernameKey=user \
+            --set database.jdbcUrl='jdbc:postgresql://db.example.com:5432/iceguard?sslmode=require' \
+            --set backend.oidc.enabled=true \
+            --set backend.oidc.authServerUrl=https://keycloak.example.com/realms/iceguard
+          # A missing database must fail the render, not produce a broken release.
+          echo "== missing database is rejected"
+          if helm template ci charts/iceguard >/dev/null 2>&1; then
+            echo "expected the render to fail without database.host" >&2; exit 1
+          fi
+
   frontend:
     name: Frontend (Node / TypeScript)
     runs-on: ubuntu-latest

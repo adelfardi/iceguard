@@ -4,7 +4,91 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims to follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-09-26
+
+### Added
+- **Versioning tab** on every table: a git-style graph of the snapshot DAG with one lane per
+  Iceberg branch/tag, fork curves, ref pills, the current snapshot and an optional view of
+  snapshots no ref reaches. Clickable counters open the branch, tag (with retention policy) and
+  snapshot lists; the snapshot list (details + rollback) replaces the former Snapshots tab.
+  Nessie catalogs also list their catalog-level references. Backed by a new
+  `GET …/tables/{table}/versioning` endpoint.
+- **Configurable dashboard**: DB-backed, live widgets (storage overview, maintenance
+  reliability, hot partitions, file-size distribution, catalogs, executions…) that can be
+  added from a gallery, pinned from a table's Storage/Overview tab, removed and reordered by
+  drag and drop in edit mode (Flyway `V10`).
+- **Storage & Health**: per-file data viewer (data + position/equality delete files) as a third
+  drill-down level, "show all" files with type filter and sorting, typed per-key partition
+  filters, multi-select partitions with a partition-scoped `rewrite_data_files` (Spark, live
+  progress), a maintenance reliability card and "recently active partitions" (Nessie-aware).
+- **Pipelines**: rerun a whole run or retry a failed task in place (resumes the skipped
+  downstream tasks), per-task retries with a delay between attempts, and a graphical cron
+  builder with a next-run preview.
+- **Timeline**: clicking a Nessie snapshot fetches its real Iceberg summary on demand.
+- **Public read-only demo mode**: `ICEGUARD_DEMO_MODE=true` on the frontend container (read at
+  startup, served as `/config.js`, so it works with the published image) shows a "read-only demo"
+  banner and refuses writes client-side with a clear message. `VITE_DEMO_MODE=true` does the same
+  in local dev. Pair it with a server-side guard (e.g. a reverse proxy allowing only `GET` on `/api`).
+- **Demo video voice-over** (`tooling/demo`, `npm run narrate`): English narration generated
+  locally with Kokoro TTS, muxed onto the demo video with matching `.srt` captions.
+- **Helm chart** (`charts/iceguard`) to deploy on Kubernetes: frontend + backend against a
+  PostgreSQL you provide (the chart ships no database), pulling the published GHCR images.
+  Ingress, network policy, OIDC, probes, PDBs and a `helm test` check are included, and the
+  render fails fast when no database is configured. Installable without Helm too, via
+  `helm template … | kubectl apply -f -`. CI lints and schema-validates the rendered manifests.
+- **Configurable database schema** (`iceguard.db.schema`, env `ICEGUARD_DB_SCHEMA`; default
+  `public`). IceGuard can now share a database with another application instead of owning
+  `public`. Flyway creates the schema and Hibernate validates against it.
+  **Upgrading:** the migrations were de-qualified (`public.x` → `x`) to make this possible, so
+  their checksums changed. An existing database fails with `Migration checksum mismatch` until
+  it is realigned once with `quarkus.flyway.repair-at-start=true` (checksums only, no data
+  touched); drop the flag afterwards.
+
+### Changed
+- The "Lineage" tab is renamed **Evolution**; the standalone **Snapshots** tab moves into
+  Versioning.
+- The Nessie history call is hard-capped at 12 s, so a slow or hanging Nessie server falls
+  back quickly instead of blocking for about a minute.
+- Upgrade **Apache Iceberg 1.10.0 → 1.11.0** (backend, bundled Spark image and the default
+  `--packages` coordinates); Parquet moves to **1.17.1** to match what Iceberg 1.11 pulls.
+  `TableMetadataParser.read(FileIO, InputFile)` was removed upstream — the Nessie snapshot/
+  partition-activity readers now use the `read(FileIO, String)` overload. Added `iceberg-orc`
+  (+ `orc-core`): 1.11's `FormatModelRegistry` registers all generic format models eagerly, so
+  even Parquet-only reads need the ORC classes on the classpath.
+- Image build stages are pinned to `--platform=$BUILDPLATFORM`. Maven and npm produce
+  architecture-neutral output, so a multi-arch build (`linux/amd64,linux/arm64`) now runs them
+  once, natively, instead of once per target under QEMU.
+
+### Fixed
+- **Spark SQL literals are now escaped correctly** in maintenance `CALL`s. Quotes were doubled
+  (`'O''Neil'`), which Spark reads as two adjacent literals (`ONeil`), and backslashes were not
+  escaped, so a partition value ending in `\` could break out of the partition-scoped `WHERE`
+  (reported by CodeQL). Backslashes and quotes are now backslash-escaped in both the UI and the
+  backend, and the `WHERE` reaches Iceberg verbatim.
+- **Frontend image now runs as a non-root user.** `nginx.conf.template` and the assets under
+  `public/` were copied with the checkout's `0640` mode, so the entrypoint died on
+  "default.conf.template: Permission denied" unless the container ran as root (or kept
+  `DAC_OVERRIDE`). A `chmod -R a+rX` at build time makes the image satisfy the `restricted`
+  Pod Security Standard, with only `NET_BIND_SERVICE` for port 80.
+
+## [0.2.1] - 2026-07-03
+
+### Added
+- **Full `rewrite_data_files` options**: strategy, sort order, `where` and the options map, each
+  opt-in, in a shared editor used by the table maintenance dialog and the pipeline task editor
+  (filtered per engine; the Java executor now honours `target-file-size-bytes` and
+  `min-input-files`).
+- **Off-peak detection**: a "Commit activity · off-peak" chart on the table Overview, finding the
+  quietest window from the snapshot timestamps (`GET …/commit-activity`, Nessie-aware).
+- **Assisted pipeline editor** on a dedicated page (`/pipelines/new`, `/pipelines/:id/edit`):
+  target → tasks → schedule → details.
+- **Dedicated Edit Catalog page** exposing every field (Bearer/OAuth2 credentials, arbitrary
+  properties, S3 storage modes); credentials are only sent when changed.
+- `docs/NESSIE.md`, and the demo recorder/renderer (`tooling/demo`).
+
+### Changed
+- Explorer sidebar shows loaders while namespaces and tables load (slow catalogs).
+- README demo GIF/MP4 now served from the v0.2.0 release assets.
 
 ## [0.2.0] - 2026-06-22
 
@@ -62,5 +146,7 @@ Initial release — an open-source web console for Apache Iceberg™ tables.
 - A real Nessie Catalog Server in the Docker dev sandbox.
 - Published container images on GHCR (`iceguard-backend`, `iceguard-frontend`).
 
-[Unreleased]: https://github.com/adelfardi/iceguard/compare/v0.1.0...HEAD
+[0.3.0]: https://github.com/adelfardi/iceguard/compare/v0.2.1...v0.3.0
+[0.2.1]: https://github.com/adelfardi/iceguard/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/adelfardi/iceguard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/adelfardi/iceguard/releases/tag/v0.1.0

@@ -7,6 +7,8 @@
 .aws/
 key
 *.key
+# Environment overlays carry real database credentials — keep them out of the repo.
+charts/iceguard/values-*-draft.yaml
 
 
 # ─── Java / Maven (backend) ───
@@ -36,3 +38,6 @@ ice.png.bak
 # ─── Rendered demo (published as GitHub release assets, not committed) ───
 docs/demo.gif
 docs/demo.mp4
+
+# Demo deployment kit (secrets, VM-specific), kept out of git
+/demo-deploy/

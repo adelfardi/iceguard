@@ -1,0 +1,36 @@
+IceGuard {{ .Chart.AppVersion }} is installed as "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Reach the UI:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+{{- $scheme := "http" }}
+{{- range $.Values.ingress.tls }}{{ if has $.host .hosts }}{{ $scheme = "https" }}{{ end }}{{ end }}
+  {{ $scheme }}://{{ .host }}
+{{- end }}
+{{- else if eq .Values.frontend.service.type "NodePort" }}
+  export NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[0].address}")
+  export NODE_PORT=$(kubectl get svc {{ include "iceguard.frontend.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if eq .Values.frontend.service.type "LoadBalancer" }}
+  kubectl get svc {{ include "iceguard.frontend.fullname" . }} -n {{ .Release.Namespace }} -w
+  # then open http://<EXTERNAL-IP>:{{ .Values.frontend.service.port }}
+{{- else }}
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "iceguard.frontend.fullname" . }} 8090:{{ .Values.frontend.service.port }}
+  # then open http://localhost:8090
+{{- end }}
+
+API / Swagger UI (not proxied by the UI's nginx — port-forward the backend):
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "iceguard.backend.fullname" . }} 8080:{{ .Values.backend.service.port }}
+  # then open http://localhost:8080/q/swagger-ui
+
+Database (yours — the chart deploys no database):
+  {{ include "iceguard.db.jdbcUrl" . }}
+Flyway migrates the schema at backend startup, so the first install expects it to be empty.
+{{- if not .Values.database.existingSecret }}
+
+NOTE: the database password was passed through values and is stored in the Secret
+{{ printf "%s-db" (include "iceguard.fullname" .) }} — prefer database.existingSecret for a secret you manage yourself.
+{{- end }}
+
+Next: open the UI and register a catalog (Settings → Catalogs), or check the release with
+  helm test {{ .Release.Name }} -n {{ .Release.Namespace }}

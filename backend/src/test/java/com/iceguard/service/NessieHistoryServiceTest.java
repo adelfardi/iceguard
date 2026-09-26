@@ -2,6 +2,7 @@ package com.iceguard.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.iceguard.dto.response.NessieCommitResponse;
+import com.iceguard.dto.response.NessieReferenceResponse;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -68,5 +69,22 @@ class NessieHistoryServiceTest {
         assertEquals("http://host/api/v2", NessieHistoryService.deriveNessieApiBase("http://host/api/v2"));
         assertEquals("https://nessie.example.com/api/v2",
                 NessieHistoryService.deriveNessieApiBase("https://nessie.example.com/iceberg"));
+    }
+
+    @Test
+    void parsesCatalogReferences() throws Exception {
+        String json = """
+            { "references": [
+              {"type":"BRANCH","name":"main","hash":"aaa"},
+              {"type":"TAG","name":"v1","hash":"bbb"} ] }
+            """;
+        List<NessieReferenceResponse> refs = NessieHistoryService.parseReferences(mapper.readTree(json));
+        assertEquals(2, refs.size());
+        assertEquals("main", refs.get(0).name());
+        assertEquals("BRANCH", refs.get(0).type());
+        assertEquals("TAG", refs.get(1).type());
+        assertEquals("bbb", refs.get(1).hash());
+
+        assertEquals(0, NessieHistoryService.parseReferences(mapper.readTree("{}")).size());
     }
 }

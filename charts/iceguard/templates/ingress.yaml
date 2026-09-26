@@ -1,0 +1,42 @@
+{{- if .Values.ingress.enabled -}}
+{{- $fullName := include "iceguard.fullname" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "iceguard.labels" (dict "ctx" . "component" "app") | nindent 4 }}
+  {{- with (merge (dict) .Values.ingress.annotations .Values.commonAnnotations) }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                {{- if eq (.service | default "frontend") "backend" }}
+                name: {{ include "iceguard.backend.fullname" $ }}
+                port:
+                  number: {{ $.Values.backend.service.port }}
+                {{- else }}
+                name: {{ include "iceguard.frontend.fullname" $ }}
+                port:
+                  number: {{ $.Values.frontend.service.port }}
+                {{- end }}
+          {{- end }}
+    {{- end }}
+{{- end }}

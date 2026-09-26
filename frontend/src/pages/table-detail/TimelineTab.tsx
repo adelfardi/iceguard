@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { History } from 'lucide-react';
-import { executionApi } from '@/api/client';
+import { executionApi, catalogApi, tableApi } from '@/api/client';
 import { OperationOutputDialog } from '@/components/OperationOutputDialog';
 import type { SnapshotInfo, ExecutionInfo } from '@/types';
 
@@ -110,6 +110,23 @@ export function TimelineTab({ catalogId, namespace, table, snapshots }: {
       (e) => e.namespace === namespace && e.tableName === table,
     ),
   });
+
+  // Nessie snapshots carry no per-commit summary; fetch it on demand when a point is clicked.
+  const { data: catalog } = useQuery({ queryKey: ['catalog', catalogId], queryFn: () => catalogApi.get(catalogId) });
+  const isNessie = catalog?.vendor === 'NESSIE';
+  const isNessieRef = React.useRef(false);
+  React.useEffect(() => { isNessieRef.current = isNessie; }, [isNessie]);
+
+  const [nessieSnapId, setNessieSnapId] = useState<string | null>(null);
+  const { data: nessieDetail, isFetching: nessieDetailFetching, isError: nessieDetailError } = useQuery({
+    queryKey: ['nessie-snap-detail', catalogId, namespace, table, nessieSnapId],
+    queryFn: () => tableApi.getNessieSnapshotDetail(catalogId, namespace, table, nessieSnapId!),
+    enabled: nessieSnapId != null,
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+  // Only show the loading state before there's any result (avoid "stuck loading" on background refetch).
+  const nessieDetailLoading = nessieSnapId != null && nessieDetailFetching && !nessieDetail && !nessieDetailError;
 
   const toggleType = (type: string) => {
     setHiddenTypes((prev) => {
@@ -247,8 +264,10 @@ export function TimelineTab({ catalogId, namespace, table, snapshots }: {
               actionType: snap.operation,
               startedAt: snap.timestamp,
               finishedAt: snap.timestamp,
-              result: snap.summary,
+              // Nessie: fetched on demand below; others already carry the full summary.
+              result: isNessieRef.current ? undefined : snap.summary,
             });
+            setNessieSnapId(isNessieRef.current ? snap.snapshotId : null);
           }
         }
       });
@@ -454,14 +473,26 @@ export function TimelineTab({ catalogId, namespace, table, snapshots }: {
 
       <OperationOutputDialog
         open={detail !== null}
-        onOpenChange={(o) => { if (!o) setDetail(null); }}
+        onOpenChange={(o) => { if (!o) { setDetail(null); setNessieSnapId(null); } }}
         title={detail?.title ?? ''}
-        actionType={detail?.actionType}
+        actionType={(nessieSnapId != null && nessieDetail?.available && nessieDetail.operation) ? nessieDetail.operation : detail?.actionType}
         status={detail?.status}
         startedAt={detail?.startedAt}
         finishedAt={detail?.finishedAt}
-        result={detail?.result}
-        errorMessage={detail?.errorMessage}
+        result={
+          nessieSnapId != null
+            ? (nessieDetailLoading ? { status: 'Loading commit details…' } : (nessieDetail?.available ? nessieDetail.summary : undefined))
+            : detail?.result
+        }
+        errorMessage={
+          nessieSnapId != null
+            ? (nessieDetailError
+                ? 'Could not load commit details — the Nessie history is unavailable or too slow.'
+                : (!nessieDetailLoading && nessieDetail && !nessieDetail.available
+                    ? (nessieDetail.message ?? 'Commit details are not available.')
+                    : undefined))
+            : detail?.errorMessage
+        }
       />
     </div>
   );

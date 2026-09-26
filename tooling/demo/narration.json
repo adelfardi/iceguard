@@ -1,0 +1,40 @@
+{
+  "voice": "am_michael",
+  "speed": 1.05,
+  "lang": "en-us",
+  "outroSeconds": 4,
+  "segments": [
+    {
+      "start": 0.4,
+      "text": "Meet IceGuard, an open-source console for Apache Iceberg. Schema, properties and snapshots, at a glance."
+    },
+    {
+      "start": 7.9,
+      "text": "The storage view breaks down file sizes and partitions, so you can drill in and catch small-file problems early."
+    },
+    {
+      "start": 15.6,
+      "text": "The timeline puts commits and maintenance runs side by side, and the evolution view diffs every schema version."
+    },
+    {
+      "start": 24.8,
+      "text": "Maintenance is built in. Here we compact data files with a real Spark job, running locally. The result and the full Spark logs stream right into the dialog."
+    },
+    {
+      "start": 41.6,
+      "text": "Alerts watch table health, and catalogs can be tagged and filtered."
+    },
+    {
+      "start": 47.6,
+      "text": "Switch catalogs from the sidebar, browse namespaces, and create tables with a guided wizard."
+    },
+    {
+      "start": 55.6,
+      "text": "Adding a catalog takes a minute: pick REST, Nessie, Polaris or Unity Catalog, set the URI and credentials, and tag it."
+    },
+    {
+      "start": 67.6,
+      "text": "Pipelines chain maintenance actions on a schedule. IceGuard is free and open source. Find it on GitHub."
+    }
+  ]
+}

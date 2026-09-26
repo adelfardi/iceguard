@@ -20,7 +20,7 @@ RUN mvn -B -ntp -DskipTests package
 FROM eclipse-temurin:25-jre-jammy
 
 ARG SPARK_VERSION=3.5.8
-ARG ICEBERG_VERSION=1.10.0
+ARG ICEBERG_VERSION=1.11.0
 
 # Java 17 (for Spark) + runtime tools Spark scripts need (ps, etc.)
 RUN apt-get update && \

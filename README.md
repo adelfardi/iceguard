@@ -6,6 +6,9 @@
 
 **A modern web console to manage, inspect and maintain Apache Iceberg™ tables across multiple catalogs.**
 
+**🌐 [adelfardi.github.io/iceguard-site](https://adelfardi.github.io/iceguard-site/)**
+
+[![Website](https://img.shields.io/badge/website-iceguard--site-06b6d4.svg)](https://adelfardi.github.io/iceguard-site/)
 [![CI](https://github.com/adelfardi/iceguard/actions/workflows/ci.yml/badge.svg)](https://github.com/adelfardi/iceguard/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/adelfardi/iceguard?sort=semver)](https://github.com/adelfardi/iceguard/releases/latest)
 [![GHCR images](https://img.shields.io/badge/ghcr.io-images-2496ED.svg?logo=docker&logoColor=white)](https://github.com/adelfardi/iceguard/pkgs/container/iceguard-backend)
@@ -95,7 +98,7 @@ flaky-remote handling) — see **[docs/NESSIE.md](docs/NESSIE.md)**.
 | Layer | Tech |
 |-------|------|
 | Frontend (product) | React, TypeScript, Vite, Tailwind CSS, shadcn/ui, TanStack Query, Zustand, Recharts |
-| Backend (product) | Java 21, Quarkus 3.17, RESTEasy Reactive, Hibernate Panache, Flyway, Apache Iceberg 1.7 |
+| Backend (product) | Java 21, Quarkus 3.17, RESTEasy Reactive, Hibernate Panache, Flyway, Apache Iceberg 1.11 |
 | Required dependency | PostgreSQL (backend state) |
 | Test sandbox only | Docker Compose: MinIO (S3), Iceberg REST Catalog, Nessie, Apache Polaris, (optional) Spark |
 
@@ -173,6 +176,35 @@ docker compose -f docker-compose.dev.yml up -d
 The **REST Catalog** and **Nessie** demo catalogs work out of the box on MinIO.
 **Polaris writes require real AWS S3** — copy `.env.example` to `.env`.
 
+### Kubernetes (Helm)
+
+A chart lives in [`charts/iceguard`](charts/iceguard). Like Level 1 above it deploys the two
+IceGuard services only — **frontend + backend** — against a **PostgreSQL you provide**
+(images default to the published `ghcr.io/adelfardi/iceguard-{frontend,backend}:0.3.0`):
+
+```bash
+helm install iceguard ./charts/iceguard -n iceguard --create-namespace \
+  --set database.host=pg.internal \
+  --set database.existingSecret=iceguard-db-credentials    # key: password
+
+kubectl port-forward -n iceguard svc/iceguard-frontend 8090:80    # then http://localhost:8090
+```
+
+The schema must be empty on first install — Flyway owns it and migrates at startup. A managed
+database usually wants the full URL instead: `--set database.jdbcUrl='jdbc:postgresql://…?sslmode=require'`.
+
+Prefer plain `kubectl`? Render the manifests and apply them — Helm is only needed to produce them:
+
+```bash
+helm template iceguard ./charts/iceguard -n iceguard --skip-tests \
+  --set database.host=pg.internal --set database.existingSecret=iceguard-db-credentials \
+  > iceguard.yaml
+kubectl create namespace iceguard && kubectl apply -n iceguard -f iceguard.yaml
+```
+
+Ingress, network policies, OIDC, replicas/PDBs and the full values reference are documented in
+[`charts/iceguard/README.md`](charts/iceguard/README.md).
+
 ### Using IceGuard for real
 
 Deploy the **frontend** and **backend**, point the backend at a **PostgreSQL** you provide
@@ -203,6 +235,7 @@ catalogs.
 ```
 backend/                 Quarkus REST API (com.iceguard.*)
 frontend/                React + TypeScript SPA
+charts/iceguard/         Helm chart (Kubernetes deployment)
 scripts/                 seed + helper scripts
 docker-compose.yml       app stack (frontend + backend; profiles: db / sandbox)
 docker-compose.dev.yml   advanced multi-catalog sandbox (Nessie, Polaris, Spark)

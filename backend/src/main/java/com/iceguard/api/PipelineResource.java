@@ -80,4 +80,16 @@ public class PipelineResource {
     public PipelineRunResponse getRun(@PathParam("runId") Long runId) {
         return service.getRun(runId);
     }
+
+    @POST
+    @Path("/runs/{runId}/rerun")
+    public PipelineRunResponse rerunRun(@PathParam("runId") Long runId) {
+        return service.rerunRun(runId);
+    }
+
+    @POST
+    @Path("/runs/{runId}/tasks/{taskRunId}/retry")
+    public PipelineRunResponse retryTask(@PathParam("runId") Long runId, @PathParam("taskRunId") Long taskRunId) {
+        return service.retryTask(runId, taskRunId);
+    }
 }

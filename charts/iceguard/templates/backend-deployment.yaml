@@ -1,0 +1,167 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "iceguard.backend.fullname" . }}
+  labels:
+    {{- include "iceguard.labels" (dict "ctx" . "component" "backend") | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "iceguard.selectorLabels" (dict "ctx" . "component" "backend") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "iceguard.selectorLabels" (dict "ctx" . "component" "backend") | nindent 8 }}
+        {{- with .Values.backend.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # Roll the pods when the database credentials change.
+        checksum/db-secret: {{ include (print $.Template.BasePath "/secret-db.yaml") . | sha256sum }}
+        {{- with (merge (dict) .Values.backend.podAnnotations .Values.commonAnnotations) }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "iceguard.serviceAccountName" . }}
+      {{- include "iceguard.imagePullSecrets" . | nindent 6 }}
+      {{- with .Values.backend.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- if and .Values.backend.waitForDatabase.enabled (include "iceguard.db.hostKnown" .) }}
+      initContainers:
+        - name: wait-for-database
+          image: {{ .Values.backend.waitForDatabase.image }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              deadline=$(( $(date +%s) + {{ .Values.backend.waitForDatabase.timeoutSeconds }} ))
+              until nc -z "$DB_HOST" "$DB_PORT"; do
+                if [ "$(date +%s)" -ge "$deadline" ]; then
+                  echo "database $DB_HOST:$DB_PORT still unreachable, giving up" >&2
+                  exit 1
+                fi
+                echo "waiting for database $DB_HOST:$DB_PORT ..."
+                sleep 2
+              done
+          env:
+            - name: DB_HOST
+              value: {{ .Values.database.host | quote }}
+            - name: DB_PORT
+              value: {{ .Values.database.port | quote }}
+          {{- with .Values.backend.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+      {{- end }}
+      containers:
+        - name: backend
+          image: {{ include "iceguard.image" (dict "ctx" . "component" "backend") }}
+          imagePullPolicy: {{ include "iceguard.imagePullPolicy" (dict "ctx" . "component" "backend") }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: QUARKUS_DATASOURCE_DB_KIND
+              value: postgresql
+            - name: QUARKUS_DATASOURCE_JDBC_URL
+              value: {{ include "iceguard.db.jdbcUrl" . | quote }}
+            - name: QUARKUS_DATASOURCE_USERNAME
+              {{- include "iceguard.db.usernameEnv" . | nindent 14 }}
+            - name: QUARKUS_DATASOURCE_PASSWORD
+              {{- include "iceguard.db.passwordEnv" . | nindent 14 }}
+            - name: ICEGUARD_DB_SCHEMA
+              value: {{ .Values.database.schema | default "public" | quote }}
+            - name: QUARKUS_HTTP_CORS
+              value: "true"
+            - name: QUARKUS_HTTP_CORS_ORIGINS
+              value: {{ .Values.backend.corsOrigins | quote }}
+            - name: QUARKUS_HTTP_LIMITS_MAX_BODY_SIZE
+              value: {{ .Values.backend.maxBodySize | quote }}
+            - name: QUARKUS_OIDC_ENABLED
+              value: {{ .Values.backend.oidc.enabled | quote }}
+            {{- if .Values.backend.oidc.enabled }}
+            - name: QUARKUS_OIDC_AUTH_SERVER_URL
+              value: {{ required "backend.oidc.authServerUrl is required when OIDC is enabled" .Values.backend.oidc.authServerUrl | quote }}
+            - name: QUARKUS_OIDC_CLIENT_ID
+              value: {{ .Values.backend.oidc.clientId | quote }}
+            {{- end }}
+            {{- with .Values.backend.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.backend.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.backend.startupProbe.enabled }}
+          startupProbe:
+            httpGet:
+              path: /q/health/started
+              port: http
+            periodSeconds: {{ .Values.backend.startupProbe.periodSeconds }}
+            failureThreshold: {{ .Values.backend.startupProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.backend.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /q/health/live
+              port: http
+            initialDelaySeconds: {{ .Values.backend.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.backend.livenessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.backend.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.backend.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /q/health/ready
+              port: http
+            initialDelaySeconds: {{ .Values.backend.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.backend.readinessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.backend.readinessProbe.failureThreshold }}
+          {{- end }}
+          {{- with .Values.backend.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.backend.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            # readOnlyRootFilesystem: the JVM still needs a scratch dir.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
