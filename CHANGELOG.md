@@ -56,6 +56,11 @@ All notable changes to this project are documented here. The format is based on
   once, natively, instead of once per target under QEMU.
 
 ### Fixed
+- **Spark SQL literals are now escaped correctly** in maintenance `CALL`s. Quotes were doubled
+  (`'O''Neil'`), which Spark reads as two adjacent literals (`ONeil`), and backslashes were not
+  escaped, so a partition value ending in `\` could break out of the partition-scoped `WHERE`
+  (reported by CodeQL). Backslashes and quotes are now backslash-escaped in both the UI and the
+  backend, and the `WHERE` reaches Iceberg verbatim.
 - **Frontend image now runs as a non-root user.** `nginx.conf.template` and the assets under
   `public/` were copied with the checkout's `0640` mode, so the entrypoint died on
   "default.conf.template: Permission denied" unless the container ran as root (or kept
