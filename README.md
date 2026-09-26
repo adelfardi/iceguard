@@ -6,6 +6,9 @@
 
 **A modern web console to manage, inspect and maintain Apache Iceberg™ tables across multiple catalogs.**
 
+**🌐 [adelfardi.github.io/iceguard-site](https://adelfardi.github.io/iceguard-site/)**
+
+[![Website](https://img.shields.io/badge/website-iceguard--site-06b6d4.svg)](https://adelfardi.github.io/iceguard-site/)
 [![CI](https://github.com/adelfardi/iceguard/actions/workflows/ci.yml/badge.svg)](https://github.com/adelfardi/iceguard/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/adelfardi/iceguard?sort=semver)](https://github.com/adelfardi/iceguard/releases/latest)
 [![GHCR images](https://img.shields.io/badge/ghcr.io-images-2496ED.svg?logo=docker&logoColor=white)](https://github.com/adelfardi/iceguard/pkgs/container/iceguard-backend)
