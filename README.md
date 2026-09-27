@@ -59,20 +59,36 @@ IceGuard then **connects to your own** Iceberg catalog(s) and object store.
 
 ## Features
 
-- **Multi-catalog** — register and switch between REST, Nessie, Polaris and Unity Catalog (None/Bearer/OAuth2 supported).
+- **Multi-catalog** — register and switch between REST, Nessie, Polaris and Unity Catalog (None/Bearer/OAuth2
+  supported). Catalogs can be **tagged** and filtered, and edited on a dedicated page (credentials, arbitrary
+  properties, S3 access modes).
+- **Dashboard** — configurable, live widgets (storage, maintenance reliability, recently active partitions,
+  file sizes, catalogs, executions): add them from a gallery, pin them from a table, drag to reorder.
 - **Namespaces & tables** — browse the tree, create namespaces, create/drop/rename tables, insert sample rows.
 - **Schema editor** — add / rename / retype / re-doc / drop multiple columns, applied in a **single commit**.
 - **Properties editor** — add / update / remove table properties in a **single commit**.
 - **Partition evolution** — add or drop partition fields (identity, bucket, truncate, year/month/day/hour).
-- **Storage tab** — point-in-time storage state: totals, file-size histogram, per-partition aggregates
-  (server-side paginated), and file drill-down.
-- **Lineage / history** — schema-version history with column diffs, and a visual snapshot-to-snapshot diff.
-- **Maintenance** — expire snapshots, rewrite data files, rewrite manifests, remove orphan files, rollback.
-  Pluggable executors: a **Java API** executor (analyse) and a **Spark** executor (real `rewrite_data_files`,
-  local `local[*]` or a remote Spark cluster).
-- **Pipelines** — chain maintenance actions with per-action parameters and a cron schedule (Airflow-style run view).
-- **Alerts** — threshold rules on table metrics with optional SMTP email notifications.
+- **Versioning** — a git-style graph of the snapshot history with one lane per branch and tag; branch, tag
+  (with retention policy) and snapshot lists, snapshot details and rollback. Nessie history is rebuilt from
+  its commit log.
+- **Storage & health** — point-in-time totals, file-size histogram and per-partition aggregates (server-side
+  paginated, typed filters), with a **health grade** for the table and for every partition (file size vs
+  target, small files, delete files; configurable thresholds). Drill down to a partition's files and to a
+  file's rows, data and delete files alike. See **[docs/STORAGE_HEALTH.md](docs/STORAGE_HEALTH.md)**.
+- **Evolution** — schema-version history with column diffs, and a visual snapshot-to-snapshot diff.
 - **Timeline** — snapshots + executions on one timeline, click any item for its output/logs.
+- **Maintenance** — expire snapshots, rewrite data files (strategy, sort order, `where`, options; whole table or
+  selected partitions), rewrite manifests, rewrite position / equality delete files, remove orphan files,
+  rollback. Pluggable executors: a **Java API** executor (real compaction and orphan removal on small,
+  append-only tables) and a **Spark** executor (local `local[*]` with tunable resources, or a remote Spark
+  cluster).
+- **Commit activity** — the quietest window of the day, detected from snapshot timestamps, to schedule
+  maintenance off-peak.
+- **Pipelines** — chain maintenance actions with per-task parameters, retries and delay, and a cron schedule
+  built graphically; Airflow-style run view with rerun and retry of a failed task.
+- **Alerts** — threshold rules on table metrics with optional SMTP email notifications.
+- **Public demo mode** — `ICEGUARD_DEMO_MODE=true` on the frontend serves a read-only UI (banner, writes refused
+  with a clear message), as on [demo.iceguard.cloud](https://demo.iceguard.cloud).
 
 ## Supported catalogs
 
