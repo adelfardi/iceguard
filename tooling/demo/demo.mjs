@@ -36,6 +36,11 @@ const THEME_SCRIPT = `
   document.documentElement.classList.remove('dark');
 `;
 
+// Catalogs never to show in a recording (confidential URIs / accounts), by name. The API responses
+// are filtered in the browser only: nothing is changed server-side.
+const HIDDEN_CATALOGS = (process.env.DEMO_HIDE_CATALOGS || 'pre,horizon-snowflake')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
 // Global pacing factor (<1 = snappier) to keep the long walkthrough GIF reasonable.
 const PACE = Number(process.env.DEMO_PACE || 0.7);
 const sleep = (ms) => new Promise((r) => setTimeout(r, Math.round(ms * PACE)));
@@ -49,6 +54,22 @@ async function run() {
   });
   await context.addInitScript(THEME_SCRIPT);
   await context.addInitScript(CURSOR_SCRIPT);
+  // Drop hidden catalogs from the catalog list, and dashboard widgets pointing at them.
+  let hiddenIds = new Set();
+  await context.route(/\/api\/catalogs(\?.*)?$/, async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    const res = await route.fetch();
+    const all = await res.json();
+    hiddenIds = new Set(all.filter((c) => HIDDEN_CATALOGS.includes(c.name)).map((c) => c.id));
+    await route.fulfill({ response: res, json: all.filter((c) => !hiddenIds.has(c.id)) });
+  });
+  await context.route(/\/api\/dashboard-widgets$/, async (route) => {
+    if (route.request().method() !== 'GET') return route.continue();
+    const res = await route.fetch();
+    const widgets = await res.json();
+    await route.fulfill({ response: res, json: widgets.filter((w) => !hiddenIds.has(w.catalogId)) });
+  });
+
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
 
@@ -80,17 +101,30 @@ async function run() {
     await sleep(900);
   }
 
+  // ── 0. Dashboard: live, configurable widgets ──
+  await goto('/catalogs');            // loads the catalog list first (fills hiddenIds for the widget filter)
+  await goto('/');
+  await sleep(1800);
+  await page.mouse.move(420, 300, { steps: 20 });
+  await sleep(900);
+  await page.mouse.move(900, 420, { steps: 20 });
+  await sleep(1400);
+
   // ── 1. Table detail — start here, walk every section ──
   await goto('/catalogs/1/namespaces/analytics/tables/events');
-  await sleep(2300);
+  await sleep(1800);
 
-  // Metadata (schema / partitions / properties sub-tabs)
-  await hoverClick(page.getByRole('tab', { name: /Metadata/i }), 1200);
-  await hoverClick(page.getByRole('tab', { name: /Partitions/i }), 1000);
-  await hoverClick(page.getByRole('tab', { name: /Properties/i }), 1100);
+  // Metadata (schema)
+  await hoverClick(page.getByRole('tab', { name: /Metadata/i }), 1300);
 
-  // Snapshots (operation icons, newest first)
-  await hoverClick(page.getByRole('tab', { name: /Snapshots/i }), 1600);
+  // Versioning: git-style graph of branches/tags, pick a branch head, then the branch list
+  await hoverClick(page.getByRole('tab', { name: /Versioning/i }), 2200);
+  try {
+    await hoverClick(page.getByRole('button').filter({ hasText: 'hotfix-revenue' }).first(), 1800);
+    await hoverClick(page.getByRole('button').filter({ hasText: 'backfill-2026-06' }).first(), 1800);
+    await hoverClick(page.getByRole('button', { name: /^Branches/ }), 2200);
+    await hoverClick(page.getByRole('button', { name: /Back to version graph/i }), 1200);
+  } catch (e) { console.warn('versioning step skipped:', e.message); }
 
   // Storage (health) → scroll to the partition navigator, drill into the first partition, back
   await hoverClick(page.getByRole('tab', { name: /Storage/i }), 1500);
@@ -134,8 +168,8 @@ async function run() {
     }
   } catch { /* ignore */ }
 
-  // Lineage → scroll all the way down through the schema-evolution history (v0→v3 diffs)
-  await hoverClick(page.getByRole('tab', { name: /Lineage/i }), 1300);
+  // Evolution → scroll all the way down through the schema-evolution history (v0→v3 diffs)
+  await hoverClick(page.getByRole('tab', { name: /Evolution/i }), 1300);
   for (let i = 0; i < 7; i++) { await page.mouse.wheel(0, 340); await sleep(480); }
   await sleep(1800);                 // dwell at the bottom on the column diffs
   await page.mouse.wheel(0, -2400);
