@@ -19,9 +19,9 @@
 
 <br/>
 
-<img src="https://github.com/adelfardi/iceguard/releases/download/v0.2.0/demo.gif" alt="IceGuard demo — browse catalogs, inspect a table, run Spark maintenance" width="90%" />
+<img src="https://github.com/adelfardi/iceguard/releases/download/v0.3.0/demo.gif" alt="IceGuard demo: dashboard, versioning graph, storage health, Spark maintenance" width="90%" />
 
-<sub>Browse tagged catalogs → inspect a table's metadata, snapshots, storage & timeline → run a Spark maintenance action and watch its result + logs. <a href="https://github.com/adelfardi/iceguard/releases/download/v0.2.0/demo.mp4">▶ MP4 version</a></sub>
+<sub>Dashboard → a table's branches & tags graph, storage health down to each partition, timeline and schema evolution → a Spark maintenance action with its result + logs → catalogs, wizards and pipelines. <a href="https://github.com/adelfardi/iceguard/releases/download/v0.3.0/demo.mp4">▶ MP4 version</a> · <a href="https://demo.iceguard.cloud">live demo</a></sub>
 
 </div>
 
